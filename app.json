@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Varyshop SMS",
+    "slug": "sms-gateway-app",
+    "version": "1.0.0",
+    "scheme": "smsgateway",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#111827"
+    },
+    "android": {
+      "package": "com.varyshop.smsgatewayapp",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#111827"
+      },
+      "permissions": [
+        "android.permission.SEND_SMS",
+        "android.permission.RECEIVE_SMS",
+        "android.permission.READ_SMS",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.READ_PHONE_NUMBERS"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.varyshop.smsgatewayapp"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7f25e2eb-8419-4b90-868a-c14fb7172494"
+      }
+    }
+  }
+}

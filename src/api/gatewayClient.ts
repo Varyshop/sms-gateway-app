@@ -1,0 +1,120 @@
+import {
+  HeartbeatResponse,
+  PendingSmsResponse,
+  ConfirmResponse,
+  InboundSmsResponse,
+  StatsResponse,
+} from '../types';
+
+const API_KEY_HEADER = 'X-API-Key';
+const DEFAULT_TIMEOUT = 30000;
+
+export class GatewayApiClient {
+  private baseUrl: string;
+  private apiKey: string;
+
+  constructor(baseUrl: string, apiKey: string) {
+    this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.apiKey = apiKey;
+  }
+
+  private async request<T>(
+    endpoint: string,
+    body: Record<string, unknown> = {}
+  ): Promise<T> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
+
+    try {
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          [API_KEY_HEADER]: this.apiKey,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
+      throw error;
+    }
+  }
+
+  async heartbeat(
+    phoneNumbers: string[],
+    batteryLevel?: number,
+    signalStrength?: number
+  ): Promise<HeartbeatResponse> {
+    return this.request<HeartbeatResponse>('/sms-gateway/heartbeat', {
+      phone_numbers: phoneNumbers,
+      battery_level: batteryLevel,
+      signal_strength: signalStrength,
+    });
+  }
+
+  async getPendingSms(
+    phoneNumbers: string[],
+    limit: number = 20
+  ): Promise<PendingSmsResponse> {
+    return this.request<PendingSmsResponse>('/sms-gateway/pending', {
+      phone_numbers: phoneNumbers,
+      limit,
+    });
+  }
+
+  async confirmSms(
+    smsId: number,
+    status: 'sending' | 'sent' | 'error',
+    errorMessage?: string
+  ): Promise<ConfirmResponse> {
+    const body: Record<string, unknown> = { status };
+    if (errorMessage) {
+      body.error_message = errorMessage;
+    }
+    return this.request<ConfirmResponse>(`/sms-gateway/confirm/${smsId}`, body);
+  }
+
+  async reportInboundSms(
+    fromNumber: string,
+    message: string,
+    toNumber: string
+  ): Promise<InboundSmsResponse> {
+    return this.request<InboundSmsResponse>('/sms-gateway/inbound', {
+      from_number: fromNumber,
+      message,
+      to_number: toNumber,
+    });
+  }
+
+  async getStats(): Promise<StatsResponse> {
+    return this.request<StatsResponse>('/sms-gateway/stats');
+  }
+}
+
+let clientInstance: GatewayApiClient | null = null;
+
+export function getApiClient(): GatewayApiClient | null {
+  return clientInstance;
+}
+
+export function initializeApiClient(baseUrl: string, apiKey: string): GatewayApiClient {
+  clientInstance = new GatewayApiClient(baseUrl, apiKey);
+  return clientInstance;
+}
+
+export function clearApiClient(): void {
+  clientInstance = null;
+}

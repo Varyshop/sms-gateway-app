@@ -1,0 +1,448 @@
+import { useEffect, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+  StyleSheet,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { isConfigured, getSettings, setServiceEnabled } from '../../src/storage/settings';
+import { getApiClient } from '../../src/api/gatewayClient';
+import { onHeartbeat, isHeartbeatActive, startHeartbeat, stopHeartbeat } from '../../src/services/heartbeatService';
+import { startSmsQueue, stopSmsQueue, isQueueActive } from '../../src/services/smsQueueService';
+import { HeartbeatResponse, PhoneStats } from '../../src/types';
+
+function formatLimit(value: number, limit: number): string {
+  if (limit === 0) return `${value} / ∞`;
+  return `${value} / ${limit}`;
+}
+
+function ProgressBar({ value, limit, color }: { value: number; limit: number; color: string }) {
+  const progress = limit > 0 ? Math.min(value / limit, 1) : 0;
+  const isWarning = limit > 0 && progress >= 0.85;
+  const barColor = isWarning ? '#EF4444' : color;
+
+  return (
+    <View style={styles.progressBar}>
+      <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: barColor }]} />
+    </View>
+  );
+}
+
+export default function DashboardScreen() {
+  const [configured, setConfigured] = useState(false);
+  const [serviceRunning, setServiceRunning] = useState(false);
+  const [pendingCount, setPendingCount] = useState<Record<string, number>>({});
+  const [phoneStats, setPhoneStats] = useState<PhoneStats[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setConfigured(isConfigured());
+    setServiceRunning(isQueueActive());
+
+    const unsubscribe = onHeartbeat((response: HeartbeatResponse) => {
+      setPendingCount(response.pending_count);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const fetchStats = useCallback(async () => {
+    const client = getApiClient();
+    if (!client) return;
+
+    try {
+      const response = await client.getStats();
+      if (response.success) {
+        setPhoneStats(response.phones);
+        setError(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch stats');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (configured) {
+      fetchStats();
+      const interval = setInterval(fetchStats, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [configured, fetchStats]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchStats();
+    setRefreshing(false);
+  };
+
+  const toggleService = () => {
+    if (serviceRunning) {
+      stopSmsQueue();
+      stopHeartbeat();
+      setServiceEnabled(false);
+    } else {
+      setServiceEnabled(true);
+      startHeartbeat();
+      startSmsQueue();
+    }
+    setServiceRunning(!serviceRunning);
+  };
+
+  if (!configured) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.emptyState}>
+          <Ionicons name="qr-code-outline" size={64} color="#6B7280" />
+          <Text style={styles.emptyTitle}>Neni sparovano</Text>
+          <Text style={styles.emptySubtitle}>
+            Prejdete do Nastaveni a naskenujte QR kod z Odoo
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Aggregate totals across all phones
+  const totalPending = Object.values(pendingCount).reduce((a, b) => a + b, 0);
+  const totalSentToday = phoneStats.reduce((a, p) => a + p.sent_today, 0);
+  const totalSentMonth = phoneStats.reduce((a, p) => a + p.sent_month, 0);
+  const totalSentAll = phoneStats.reduce((a, p) => a + p.sent_total, 0);
+
+  return (
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3B82F6" />
+      }
+    >
+      <View style={styles.header}>
+        <Text style={styles.title}>SMS Gateway</Text>
+        <View style={[styles.statusBadge, serviceRunning ? styles.statusOnline : styles.statusOffline]}>
+          <View style={[styles.statusDot, serviceRunning ? styles.dotOnline : styles.dotOffline]} />
+          <Text style={styles.statusText}>{serviceRunning ? 'Online' : 'Offline'}</Text>
+        </View>
+      </View>
+
+      {/* Toggle Button */}
+      <TouchableOpacity
+        style={[styles.toggleButton, serviceRunning ? styles.toggleStop : styles.toggleStart]}
+        onPress={toggleService}
+      >
+        <Ionicons
+          name={serviceRunning ? 'stop-circle-outline' : 'play-circle-outline'}
+          size={24}
+          color="#FFF"
+        />
+        <Text style={styles.toggleText}>
+          {serviceRunning ? 'Zastavit odesilani' : 'Spustit odesilani'}
+        </Text>
+      </TouchableOpacity>
+
+      {error && (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+
+      {/* Global Summary */}
+      {phoneStats.length > 0 && (
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItem}>
+              <Ionicons name="hourglass-outline" size={18} color="#FBBF24" />
+              <Text style={styles.summaryValue}>{totalPending}</Text>
+              <Text style={styles.summaryLabel}>Ve fronte</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Ionicons name="today-outline" size={18} color="#3B82F6" />
+              <Text style={styles.summaryValue}>{totalSentToday}</Text>
+              <Text style={styles.summaryLabel}>Dnes</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Ionicons name="calendar-outline" size={18} color="#8B5CF6" />
+              <Text style={styles.summaryValue}>{totalSentMonth}</Text>
+              <Text style={styles.summaryLabel}>Mesic</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Ionicons name="stats-chart-outline" size={18} color="#34D399" />
+              <Text style={styles.summaryValue}>{totalSentAll}</Text>
+              <Text style={styles.summaryLabel}>Celkem</Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Phone Cards */}
+      {phoneStats.map((phone) => {
+        const phonePending = pendingCount[phone.phone_number] || 0;
+
+        return (
+          <View key={phone.id} style={styles.phoneCard}>
+            <View style={styles.phoneHeader}>
+              <Text style={styles.phoneName}>{phone.name}</Text>
+              <View style={[styles.statusBadge, phone.state === 'online' ? styles.statusOnline : styles.statusOffline]}>
+                <View style={[styles.statusDot, phone.state === 'online' ? styles.dotOnline : styles.dotOffline]} />
+                <Text style={styles.statusText}>{phone.state}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.phoneNumber}>SIM 1: {phone.phone_number}</Text>
+            {phone.phone_number_2 && (
+              <Text style={styles.phoneNumber}>SIM 2: {phone.phone_number_2}</Text>
+            )}
+
+            {/* Daily limit */}
+            <View style={styles.limitSection}>
+              <View style={styles.limitHeader}>
+                <Text style={styles.limitLabel}>Denni limit</Text>
+                <Text style={styles.limitValue}>{formatLimit(phone.sent_today, phone.daily_limit)}</Text>
+              </View>
+              <ProgressBar value={phone.sent_today} limit={phone.daily_limit} color="#3B82F6" />
+            </View>
+
+            {/* Monthly limit */}
+            <View style={styles.limitSection}>
+              <View style={styles.limitHeader}>
+                <Text style={styles.limitLabel}>Mesicni limit</Text>
+                <Text style={styles.limitValue}>{formatLimit(phone.sent_month, phone.monthly_limit)}</Text>
+              </View>
+              <ProgressBar value={phone.sent_month} limit={phone.monthly_limit} color="#8B5CF6" />
+            </View>
+
+            {/* Stats row */}
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <Text style={[styles.statValue, phonePending > 0 && styles.statValueWarning]}>
+                  {phonePending}
+                </Text>
+                <Text style={styles.statLabel}>Ve fronte</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{phone.sent_today}</Text>
+                <Text style={styles.statLabel}>Dnes</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{phone.sent_month}</Text>
+                <Text style={styles.statLabel}>Mesic</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{phone.sent_total}</Text>
+                <Text style={styles.statLabel}>Celkem</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{phone.rate_limit}/m</Text>
+                <Text style={styles.statLabel}>Rychlost</Text>
+              </View>
+            </View>
+          </View>
+        );
+      })}
+
+      {phoneStats.length === 0 && !error && (
+        <View style={styles.emptyState}>
+          <Ionicons name="phone-portrait-outline" size={48} color="#6B7280" />
+          <Text style={styles.emptySubtitle}>Zadne telefony nenalezeny</Text>
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#111827',
+    paddingTop: 48,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#F9FAFB',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusOnline: { backgroundColor: '#064E3B' },
+  statusOffline: { backgroundColor: '#7F1D1D' },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  dotOnline: { backgroundColor: '#34D399' },
+  dotOffline: { backgroundColor: '#F87171' },
+  statusText: {
+    color: '#F9FAFB',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  toggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  toggleStart: { backgroundColor: '#2563EB' },
+  toggleStop: { backgroundColor: '#DC2626' },
+  toggleText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  errorBox: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: '#7F1D1D',
+    borderRadius: 8,
+  },
+  errorText: { color: '#FCA5A5', fontSize: 14 },
+
+  // Global summary card
+  summaryCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#374151',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  summaryItem: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  summaryValue: {
+    color: '#F9FAFB',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  summaryLabel: {
+    color: '#6B7280',
+    fontSize: 11,
+  },
+
+  // Phone card
+  phoneCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 16,
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+  },
+  phoneHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  phoneName: {
+    color: '#F9FAFB',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  phoneNumber: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    marginBottom: 2,
+  },
+
+  // Limit sections
+  limitSection: {
+    marginTop: 10,
+  },
+  limitHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  limitLabel: {
+    color: '#9CA3AF',
+    fontSize: 12,
+  },
+  limitValue: {
+    color: '#D1D5DB',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: '#374151',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+
+  // Stats
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#374151',
+  },
+  statItem: { alignItems: 'center' },
+  statValue: {
+    color: '#F9FAFB',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  statValueWarning: {
+    color: '#FBBF24',
+  },
+  statLabel: {
+    color: '#6B7280',
+    fontSize: 10,
+    marginTop: 2,
+  },
+
+  // Empty state
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+  },
+  emptyTitle: {
+    color: '#F9FAFB',
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+  },
+  emptySubtitle: {
+    color: '#6B7280',
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+    paddingHorizontal: 40,
+  },
+});

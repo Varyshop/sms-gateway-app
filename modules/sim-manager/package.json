@@ -1,0 +1,9 @@
+{
+  "name": "sim-manager",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "types": "index.ts",
+  "expo": {
+    "configPlugin": "./app.plugin.js"
+  }
+}

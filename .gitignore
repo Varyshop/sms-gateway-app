@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# iOS - this is an Android-only app
+ios/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Android build artifacts
+android/app/build/
+android/build/
+android/.gradle/
+
+# Native module build artifacts
+modules/*/android/build/
+modules/*/android/.gradle/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# EAS
+.eas/
+
+# Tests
+coverage/
