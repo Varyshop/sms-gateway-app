@@ -11,7 +11,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { isConfigured, getSettings, setServiceEnabled } from '../../src/storage/settings';
 import { getApiClient } from '../../src/api/gatewayClient';
 import { onHeartbeat, isHeartbeatActive, startHeartbeat, stopHeartbeat } from '../../src/services/heartbeatService';
-import { startSmsQueue, stopSmsQueue, isQueueActive } from '../../src/services/smsQueueService';
+import { startSmsQueue, stopSmsQueue, stopSmsQueueFull, isQueueActive } from '../../src/services/smsQueueService';
+import { startInboundSmsListener, stopInboundSmsListener } from '../../src/services/inboundSmsService';
+import GatewayService, { ServiceStatus } from '../../modules/gateway-service';
 import { HeartbeatResponse, PhoneStats } from '../../src/types';
 
 function formatLimit(value: number, limit: number): string {
@@ -34,6 +36,7 @@ function ProgressBar({ value, limit, color }: { value: number; limit: number; co
 export default function DashboardScreen() {
   const [configured, setConfigured] = useState(false);
   const [serviceRunning, setServiceRunning] = useState(false);
+  const [nativeServiceRunning, setNativeServiceRunning] = useState(false);
   const [pendingCount, setPendingCount] = useState<Record<string, number>>({});
   const [phoneStats, setPhoneStats] = useState<PhoneStats[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -43,11 +46,28 @@ export default function DashboardScreen() {
     setConfigured(isConfigured());
     setServiceRunning(isQueueActive());
 
+    // Check native service status
+    GatewayService.isRunning().then((running) => {
+      setNativeServiceRunning(running);
+      if (running && !isQueueActive()) {
+        setServiceRunning(true);
+      }
+    });
+
     const unsubscribe = onHeartbeat((response: HeartbeatResponse) => {
       setPendingCount(response.pending_count);
     });
 
-    return unsubscribe;
+    // Periodically refresh native service status
+    const statusInterval = setInterval(async () => {
+      const running = await GatewayService.isRunning();
+      setNativeServiceRunning(running);
+    }, 10000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(statusInterval);
+    };
   }, []);
 
   const fetchStats = useCallback(async () => {
@@ -79,15 +99,17 @@ export default function DashboardScreen() {
     setRefreshing(false);
   };
 
-  const toggleService = () => {
+  const toggleService = async () => {
     if (serviceRunning) {
-      stopSmsQueue();
+      await stopSmsQueueFull();
       stopHeartbeat();
+      stopInboundSmsListener();
       setServiceEnabled(false);
     } else {
       setServiceEnabled(true);
       startHeartbeat();
       startSmsQueue();
+      startInboundSmsListener();
     }
     setServiceRunning(!serviceRunning);
   };
@@ -121,9 +143,9 @@ export default function DashboardScreen() {
     >
       <View style={styles.header}>
         <Text style={styles.title}>SMS Gateway</Text>
-        <View style={[styles.statusBadge, serviceRunning ? styles.statusOnline : styles.statusOffline]}>
-          <View style={[styles.statusDot, serviceRunning ? styles.dotOnline : styles.dotOffline]} />
-          <Text style={styles.statusText}>{serviceRunning ? 'Online' : 'Offline'}</Text>
+        <View style={[styles.statusBadge, (serviceRunning || nativeServiceRunning) ? styles.statusOnline : styles.statusOffline]}>
+          <View style={[styles.statusDot, (serviceRunning || nativeServiceRunning) ? styles.dotOnline : styles.dotOffline]} />
+          <Text style={styles.statusText}>{(serviceRunning || nativeServiceRunning) ? 'Online' : 'Offline'}</Text>
         </View>
       </View>
 

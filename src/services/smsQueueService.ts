@@ -3,6 +3,7 @@ import { getApiClient } from '../api/gatewayClient';
 import { getSettings } from '../storage/settings';
 import DirectSms, { setSmsCheckSettings } from '../../modules/direct-sms';
 import SimManager from '../../modules/sim-manager';
+import GatewayService from '../../modules/gateway-service';
 import { PendingSms, SmsHistoryItem } from '../types';
 
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
@@ -119,10 +120,20 @@ async function pollAndSend(): Promise<void> {
 
 function handleAppStateChange(nextAppState: AppStateStatus): void {
   if (nextAppState === 'active') {
+    // When app comes to foreground, do an immediate JS-side poll for UI history
     pollAndSend();
   }
 }
 
+/**
+ * Start SMS queue processing.
+ *
+ * The actual background work (polling + sending) is done by the native
+ * SmsGatewayService foreground service which survives screen-off and
+ * background state. The JS-side setInterval is kept as a supplement
+ * that only runs when the app is in the foreground (for real-time UI
+ * history updates).
+ */
 export function startSmsQueue(): void {
   if (Platform.OS !== 'android') return;
 
@@ -136,9 +147,20 @@ export function startSmsQueue(): void {
     .then((res) => console.log(`[SmsQueue] SMS check limits applied: max=${res.maxCount}, interval=${res.intervalMs}ms`))
     .catch((err) => console.warn('[SmsQueue] Could not apply SMS check limits (WRITE_SECURE_SETTINGS needed):', err.message));
 
-  const intervalMs = settings.pollingInterval * 1000;
-  console.log(`[SmsQueue] Starting with ${settings.pollingInterval}s polling interval`);
+  // Start native foreground service (survives screen-off / background)
+  GatewayService.startService(
+    settings.apiUrl,
+    settings.apiKey,
+    settings.serviceEnabled,
+    settings.pollingInterval,
+    settings.heartbeatInterval,
+  )
+    .then(() => console.log('[SmsQueue] Native foreground service started'))
+    .catch((err) => console.error('[SmsQueue] Failed to start native service:', err));
 
+  // JS-side polling as supplement for foreground UI updates
+  const intervalMs = settings.pollingInterval * 1000;
+  console.log(`[SmsQueue] Starting JS-side polling with ${settings.pollingInterval}s interval`);
   pollAndSend();
   pollingInterval = setInterval(pollAndSend, intervalMs);
   appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
@@ -153,6 +175,14 @@ export function stopSmsQueue(): void {
     appStateSubscription.remove();
     appStateSubscription = null;
   }
+}
+
+/**
+ * Stop both JS-side polling and the native foreground service.
+ */
+export async function stopSmsQueueFull(): Promise<void> {
+  stopSmsQueue();
+  await GatewayService.stopService();
 }
 
 export function setRateLimit(limit: number): void {
@@ -183,6 +213,7 @@ export function triggerImmediatePoll(): void {
 export default {
   startSmsQueue,
   stopSmsQueue,
+  stopSmsQueueFull,
   getSmsHistory,
   onHistoryChange,
   isQueueActive,

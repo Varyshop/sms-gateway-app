@@ -7,6 +7,7 @@ import { initializeApiClient } from '../src/api/gatewayClient';
 import { startHeartbeat, stopHeartbeat } from '../src/services/heartbeatService';
 import { startSmsQueue, stopSmsQueue, setRateLimit } from '../src/services/smsQueueService';
 import { startInboundSmsListener, stopInboundSmsListener } from '../src/services/inboundSmsService';
+import GatewayService from '../modules/gateway-service';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,6 +27,21 @@ async function requestSmsPermissions() {
   } catch (e) {
     console.error('[Permissions] Error requesting SMS permissions:', e);
     return false;
+  }
+}
+
+async function requestBatteryOptimizationExemption() {
+  if (Platform.OS !== 'android') return;
+  try {
+    const isExempt = await GatewayService.isBatteryOptimizationDisabled();
+    if (!isExempt) {
+      console.log('[Battery] Requesting battery optimization exemption');
+      await GatewayService.requestBatteryOptimizationExemption();
+    } else {
+      console.log('[Battery] Already exempt from battery optimization');
+    }
+  } catch (e) {
+    console.warn('[Battery] Could not request battery exemption:', e);
   }
 }
 
@@ -56,9 +72,14 @@ const AppLayout = () => {
         }
 
         if (isConfigured() && settings.serviceEnabled) {
-          startHeartbeat();
+          // Start native foreground service (survives screen-off)
           startSmsQueue();
+          // JS-side heartbeat (supplement, only runs in foreground)
+          startHeartbeat();
+          // JS-side inbound listener (supplement, native receiver handles background)
           startInboundSmsListener();
+          // Request battery optimization exemption
+          requestBatteryOptimizationExemption();
         }
 
         servicesInitialized.current = true;
@@ -73,6 +94,7 @@ const AppLayout = () => {
       stopHeartbeat();
       stopSmsQueue();
       stopInboundSmsListener();
+      // Note: native foreground service keeps running intentionally
     };
   }, [storageReady]);
 

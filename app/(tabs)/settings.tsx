@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,9 +8,11 @@ import {
   StyleSheet,
   Switch,
   TextInput,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import {
   getSettings,
   setServiceEnabled,
@@ -20,21 +22,44 @@ import {
   setSmsCheckIntervalMs,
   isConfigured,
   clearSettings,
-} from '../../src/storage/settings';
-import { initializeApiClient, clearApiClient } from '../../src/api/gatewayClient';
-import { startHeartbeat, stopHeartbeat } from '../../src/services/heartbeatService';
-import { startSmsQueue, stopSmsQueue } from '../../src/services/smsQueueService';
-import SimManager, { SimCardInfo, getSimDisplayString } from '../../modules/sim-manager';
-import DirectSms from '../../modules/direct-sms';
+} from "../../src/storage/settings";
+import {
+  initializeApiClient,
+  clearApiClient,
+} from "../../src/api/gatewayClient";
+import {
+  startHeartbeat,
+  stopHeartbeat,
+} from "../../src/services/heartbeatService";
+import {
+  startSmsQueue,
+  stopSmsQueue,
+  stopSmsQueueFull,
+} from "../../src/services/smsQueueService";
+import { startInboundSmsListener, stopInboundSmsListener } from "../../src/services/inboundSmsService";
+import GatewayService from "../../modules/gateway-service";
+import SimManager, {
+  SimCardInfo,
+  getSimDisplayString,
+} from "../../modules/sim-manager";
+import DirectSms from "../../modules/direct-sms";
 
 export default function SettingsScreen() {
   const router = useRouter();
   const [settings, setSettingsState] = useState(getSettings());
   const [simCards, setSimCards] = useState<SimCardInfo[]>([]);
-  const [pollIntervalText, setPollIntervalText] = useState(String(settings.pollingInterval));
-  const [heartbeatIntervalText, setHeartbeatIntervalText] = useState(String(settings.heartbeatInterval));
-  const [smsCheckMaxCountText, setSmsCheckMaxCountText] = useState(String(settings.smsCheckMaxCount));
-  const [smsCheckIntervalText, setSmsCheckIntervalText] = useState(String(Math.round(settings.smsCheckIntervalMs / 1000)));
+  const [pollIntervalText, setPollIntervalText] = useState(
+    String(settings.pollingInterval),
+  );
+  const [heartbeatIntervalText, setHeartbeatIntervalText] = useState(
+    String(settings.heartbeatInterval),
+  );
+  const [smsCheckMaxCountText, setSmsCheckMaxCountText] = useState(
+    String(settings.smsCheckMaxCount),
+  );
+  const [smsCheckIntervalText, setSmsCheckIntervalText] = useState(
+    String(Math.round(settings.smsCheckIntervalMs / 1000)),
+  );
   const [smsCheckStatus, setSmsCheckStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,15 +74,20 @@ export default function SettingsScreen() {
       setSmsCheckIntervalText(String(Math.round(current.intervalMs / 1000)));
       setSmsCheckStatus(null);
     } catch (error) {
-      console.error('Failed to load SMS check settings:', error);
+      console.error("Failed to load SMS check settings:", error);
     }
   };
 
   const handleApplySmsCheckSettings = async () => {
     const maxCount = parseInt(smsCheckMaxCountText, 10);
     const intervalSec = parseInt(smsCheckIntervalText, 10);
-    if (isNaN(maxCount) || maxCount < 1 || isNaN(intervalSec) || intervalSec < 1) {
-      setSmsCheckStatus('Neplatne hodnoty');
+    if (
+      isNaN(maxCount) ||
+      maxCount < 1 ||
+      isNaN(intervalSec) ||
+      intervalSec < 1
+    ) {
+      setSmsCheckStatus("Neplatne hodnoty");
       return;
     }
     const intervalMs = intervalSec * 1000;
@@ -65,11 +95,15 @@ export default function SettingsScreen() {
       await DirectSms.setSmsCheckSettings(maxCount, intervalMs);
       setSmsCheckMaxCount(maxCount);
       setSmsCheckIntervalMs(intervalMs);
-      setSettingsState({ ...settings, smsCheckMaxCount: maxCount, smsCheckIntervalMs: intervalMs });
-      setSmsCheckStatus('Ulozeno');
+      setSettingsState({
+        ...settings,
+        smsCheckMaxCount: maxCount,
+        smsCheckIntervalMs: intervalMs,
+      });
+      setSmsCheckStatus("Ulozeno");
       setTimeout(() => setSmsCheckStatus(null), 2000);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Chyba';
+      const msg = error instanceof Error ? error.message : "Chyba";
       setSmsCheckStatus(msg);
     }
   };
@@ -79,24 +113,26 @@ export default function SettingsScreen() {
       const sims = await SimManager.getActiveSimCards();
       setSimCards(sims);
     } catch (error) {
-      console.error('Failed to load SIM cards:', error);
+      console.error("Failed to load SIM cards:", error);
     }
   };
 
   const handleQrScan = () => {
-    router.push('/qr-scanner');
+    router.push("/qr-scanner");
   };
 
-  const handleToggleService = (enabled: boolean) => {
+  const handleToggleService = async (enabled: boolean) => {
     setServiceEnabled(enabled);
     setSettingsState({ ...settings, serviceEnabled: enabled });
 
     if (enabled && isConfigured()) {
       startHeartbeat();
       startSmsQueue();
+      startInboundSmsListener();
     } else {
       stopHeartbeat();
-      stopSmsQueue();
+      await stopSmsQueueFull();
+      stopInboundSmsListener();
     }
   };
 
@@ -104,9 +140,14 @@ export default function SettingsScreen() {
     const value = parseInt(pollIntervalText, 10);
     if (value > 0) {
       setPollingInterval(value);
-      setSettingsState({ ...settings, pollingInterval: value });
-      // Restart queue with new interval
+      const newSettings = { ...settings, pollingInterval: value };
+      setSettingsState(newSettings);
+      // Update native service config
       if (settings.serviceEnabled) {
+        GatewayService.updateConfig(
+          newSettings.apiUrl, newSettings.apiKey, newSettings.serviceEnabled,
+          newSettings.pollingInterval, newSettings.heartbeatInterval
+        );
         stopSmsQueue();
         startSmsQueue();
       }
@@ -117,8 +158,14 @@ export default function SettingsScreen() {
     const value = parseInt(heartbeatIntervalText, 10);
     if (value > 0) {
       setHeartbeatInterval(value);
-      setSettingsState({ ...settings, heartbeatInterval: value });
+      const newSettings = { ...settings, heartbeatInterval: value };
+      setSettingsState(newSettings);
+      // Update native service config
       if (settings.serviceEnabled) {
+        GatewayService.updateConfig(
+          newSettings.apiUrl, newSettings.apiKey, newSettings.serviceEnabled,
+          newSettings.pollingInterval, newSettings.heartbeatInterval
+        );
         stopHeartbeat();
         startHeartbeat();
       }
@@ -126,24 +173,21 @@ export default function SettingsScreen() {
   };
 
   const handleDisconnect = () => {
-    Alert.alert(
-      'Odpojit',
-      'Opravdu chcete odpojit telefon od serveru?',
-      [
-        { text: 'Zrusit', style: 'cancel' },
-        {
-          text: 'Odpojit',
-          style: 'destructive',
-          onPress: () => {
-            stopHeartbeat();
-            stopSmsQueue();
-            clearApiClient();
-            clearSettings();
-            setSettingsState(getSettings());
-          },
+    Alert.alert("Odpojit", "Opravdu chcete odpojit telefon od serveru?", [
+      { text: "Zrusit", style: "cancel" },
+      {
+        text: "Odpojit",
+        style: "destructive",
+        onPress: async () => {
+          stopHeartbeat();
+          await stopSmsQueueFull();
+          stopInboundSmsListener();
+          clearApiClient();
+          clearSettings();
+          setSettingsState(getSettings());
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const refreshSettings = () => {
@@ -159,147 +203,184 @@ export default function SettingsScreen() {
   }, []);
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Nastaveni</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.title}>Nastaveni</Text>
 
-      {/* Connection Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Pripojeni</Text>
+        {/* Connection Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Pripojeni</Text>
 
-        {isConfigured() ? (
-          <>
-            <View style={styles.row}>
-              <Text style={styles.label}>Server</Text>
-              <Text style={styles.value} numberOfLines={1}>{settings.apiUrl}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>API Key</Text>
-              <Text style={styles.value}>{'*'.repeat(8)}...{settings.apiKey.slice(-4)}</Text>
-            </View>
-            <TouchableOpacity style={styles.dangerButton} onPress={handleDisconnect}>
-              <Ionicons name="unlink-outline" size={18} color="#F87171" />
-              <Text style={styles.dangerButtonText}>Odpojit</Text>
+          {isConfigured() ? (
+            <>
+              <View style={styles.row}>
+                <Text style={styles.label}>Server</Text>
+                <Text style={styles.value} numberOfLines={1}>
+                  {settings.apiUrl}
+                </Text>
+              </View>
+              <View style={styles.row}>
+                <Text style={styles.label}>API Key</Text>
+                <Text style={styles.value}>
+                  {"*".repeat(8)}...{settings.apiKey.slice(-4)}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.dangerButton}
+                onPress={handleDisconnect}
+              >
+                <Ionicons name="unlink-outline" size={18} color="#F87171" />
+                <Text style={styles.dangerButtonText}>Odpojit</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={handleQrScan}
+            >
+              <Ionicons name="qr-code-outline" size={20} color="#FFF" />
+              <Text style={styles.primaryButtonText}>Naskenovat QR kod</Text>
             </TouchableOpacity>
-          </>
-        ) : (
-          <TouchableOpacity style={styles.primaryButton} onPress={handleQrScan}>
-            <Ionicons name="qr-code-outline" size={20} color="#FFF" />
-            <Text style={styles.primaryButtonText}>Naskenovat QR kod</Text>
+          )}
+        </View>
+
+        {/* SIM Info */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>SIM karty</Text>
+          {simCards.length > 0 ? (
+            simCards.map((sim) => (
+              <View key={sim.subscriptionId} style={styles.row}>
+                <Text style={styles.label}>SIM {sim.slotIndex + 1}</Text>
+                <Text style={styles.value}>{getSimDisplayString(sim)}</Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.emptyText}>Zadne SIM karty nenalezeny</Text>
+          )}
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={loadSimCards}
+          >
+            <Text style={styles.secondaryButtonText}>Obnovit</Text>
           </TouchableOpacity>
-        )}
-      </View>
-
-      {/* SIM Info */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>SIM karty</Text>
-        {simCards.length > 0 ? (
-          simCards.map((sim) => (
-            <View key={sim.subscriptionId} style={styles.row}>
-              <Text style={styles.label}>SIM {sim.slotIndex + 1}</Text>
-              <Text style={styles.value}>{getSimDisplayString(sim)}</Text>
-            </View>
-          ))
-        ) : (
-          <Text style={styles.emptyText}>Zadne SIM karty nenalezeny</Text>
-        )}
-        <TouchableOpacity style={styles.secondaryButton} onPress={loadSimCards}>
-          <Text style={styles.secondaryButtonText}>Obnovit</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Service Control */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Sluzba</Text>
-        <View style={styles.switchRow}>
-          <Text style={styles.label}>Odesilani SMS</Text>
-          <Switch
-            value={settings.serviceEnabled}
-            onValueChange={handleToggleService}
-            trackColor={{ false: '#374151', true: '#1D4ED8' }}
-            thumbColor={settings.serviceEnabled ? '#3B82F6' : '#9CA3AF'}
-          />
         </View>
 
-        <View style={styles.inputRow}>
-          <Text style={styles.label}>Polling interval (s)</Text>
-          <TextInput
-            style={styles.input}
-            value={pollIntervalText}
-            onChangeText={setPollIntervalText}
-            onBlur={handleSavePollingInterval}
-            keyboardType="numeric"
-            placeholderTextColor="#6B7280"
-          />
+        {/* Service Control */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Sluzba</Text>
+          <View style={styles.switchRow}>
+            <Text style={styles.label}>Odesilani SMS</Text>
+            <Switch
+              value={settings.serviceEnabled}
+              onValueChange={handleToggleService}
+              trackColor={{ false: "#374151", true: "#1D4ED8" }}
+              thumbColor={settings.serviceEnabled ? "#3B82F6" : "#9CA3AF"}
+            />
+          </View>
+
+          <View style={styles.inputRow}>
+            <Text style={styles.label}>Polling interval (s)</Text>
+            <TextInput
+              style={styles.input}
+              value={pollIntervalText}
+              onChangeText={setPollIntervalText}
+              onBlur={handleSavePollingInterval}
+              keyboardType="numeric"
+              placeholderTextColor="#6B7280"
+            />
+          </View>
+
+          <View style={styles.inputRow}>
+            <Text style={styles.label}>Heartbeat interval (s)</Text>
+            <TextInput
+              style={styles.input}
+              value={heartbeatIntervalText}
+              onChangeText={setHeartbeatIntervalText}
+              onBlur={handleSaveHeartbeatInterval}
+              keyboardType="numeric"
+              placeholderTextColor="#6B7280"
+            />
+          </View>
         </View>
 
-        <View style={styles.inputRow}>
-          <Text style={styles.label}>Heartbeat interval (s)</Text>
-          <TextInput
-            style={styles.input}
-            value={heartbeatIntervalText}
-            onChangeText={setHeartbeatIntervalText}
-            onBlur={handleSaveHeartbeatInterval}
-            keyboardType="numeric"
-            placeholderTextColor="#6B7280"
-          />
-        </View>
-      </View>
-
-      {/* SMS Limit Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>SMS limit (Android)</Text>
-        <Text style={styles.hintText}>
-          Maximalni pocet SMS v intervalu pred systemovym alertem.
-          Vyzaduje ADB: adb shell pm grant com.varyshop.smsgatewayapp android.permission.WRITE_SECURE_SETTINGS
-        </Text>
-
-        <View style={styles.inputRow}>
-          <Text style={styles.label}>Max SMS v intervalu</Text>
-          <TextInput
-            style={styles.input}
-            value={smsCheckMaxCountText}
-            onChangeText={setSmsCheckMaxCountText}
-            keyboardType="numeric"
-            placeholderTextColor="#6B7280"
-          />
-        </View>
-
-        <View style={styles.inputRow}>
-          <Text style={styles.label}>Interval (s)</Text>
-          <TextInput
-            style={styles.input}
-            value={smsCheckIntervalText}
-            onChangeText={setSmsCheckIntervalText}
-            keyboardType="numeric"
-            placeholderTextColor="#6B7280"
-          />
-        </View>
-
-        <TouchableOpacity style={styles.primaryButton} onPress={handleApplySmsCheckSettings}>
-          <Ionicons name="shield-checkmark-outline" size={18} color="#FFF" />
-          <Text style={styles.primaryButtonText}>Aplikovat</Text>
-        </TouchableOpacity>
-
-        {smsCheckStatus && (
-          <Text style={[styles.hintText, { marginTop: 8, color: smsCheckStatus === 'Ulozeno' ? '#34D399' : '#F87171' }]}>
-            {smsCheckStatus}
+        {/* SMS Limit Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>SMS limit (Android)</Text>
+          <Text style={styles.hintText}>
+            Maximalni pocet SMS v intervalu pred systemovym alertem. Vyzaduje
+            ADB: adb shell pm grant com.varyshop.smsgatewayapp
+            android.permission.WRITE_SECURE_SETTINGS
           </Text>
-        )}
-      </View>
-    </ScrollView>
+
+          <View style={styles.inputRow}>
+            <Text style={styles.label}>Max SMS v intervalu</Text>
+            <TextInput
+              style={styles.input}
+              value={smsCheckMaxCountText}
+              onChangeText={setSmsCheckMaxCountText}
+              keyboardType="numeric"
+              placeholderTextColor="#6B7280"
+            />
+          </View>
+
+          <View style={styles.inputRow}>
+            <Text style={styles.label}>Interval (s)</Text>
+            <TextInput
+              style={styles.input}
+              value={smsCheckIntervalText}
+              onChangeText={setSmsCheckIntervalText}
+              keyboardType="numeric"
+              placeholderTextColor="#6B7280"
+            />
+          </View>
+
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={handleApplySmsCheckSettings}
+          >
+            <Ionicons name="shield-checkmark-outline" size={18} color="#FFF" />
+            <Text style={styles.primaryButtonText}>Aplikovat</Text>
+          </TouchableOpacity>
+
+          {smsCheckStatus && (
+            <Text
+              style={[
+                styles.hintText,
+                {
+                  marginTop: 8,
+                  color: smsCheckStatus === "Ulozeno" ? "#34D399" : "#F87171",
+                },
+              ]}
+            >
+              {smsCheckStatus}
+            </Text>
+          )}
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#111827',
+    backgroundColor: "#111827",
     paddingTop: 48,
+  },
+  contentContainer: {
+    paddingBottom: 40,
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#F9FAFB',
+    fontWeight: "bold",
+    color: "#F9FAFB",
     paddingHorizontal: 16,
     marginBottom: 20,
   },
@@ -307,104 +388,104 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 20,
     padding: 16,
-    backgroundColor: '#1F2937',
+    backgroundColor: "#1F2937",
     borderRadius: 12,
   },
   sectionTitle: {
-    color: '#9CA3AF',
+    color: "#9CA3AF",
     fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
+    fontWeight: "600",
+    textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: 12,
   },
   row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#374151',
+    borderBottomColor: "#374151",
   },
   switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 8,
   },
   inputRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: '#374151',
+    borderTopColor: "#374151",
   },
   label: {
-    color: '#D1D5DB',
+    color: "#D1D5DB",
     fontSize: 15,
   },
   value: {
-    color: '#6B7280',
+    color: "#6B7280",
     fontSize: 14,
-    maxWidth: '60%',
-    textAlign: 'right',
+    maxWidth: "60%",
+    textAlign: "right",
   },
   input: {
-    backgroundColor: '#374151',
-    color: '#F9FAFB',
+    backgroundColor: "#374151",
+    color: "#F9FAFB",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
     width: 80,
-    textAlign: 'center',
+    textAlign: "center",
     fontSize: 15,
   },
   emptyText: {
-    color: '#6B7280',
+    color: "#6B7280",
     fontSize: 14,
     paddingVertical: 8,
   },
   hintText: {
-    color: '#6B7280',
+    color: "#6B7280",
     fontSize: 12,
     marginBottom: 8,
     lineHeight: 16,
   },
   primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#2563EB',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#2563EB",
     paddingVertical: 12,
     borderRadius: 10,
     gap: 8,
     marginTop: 8,
   },
   primaryButtonText: {
-    color: '#FFF',
+    color: "#FFF",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   secondaryButton: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 8,
     marginTop: 8,
   },
   secondaryButtonText: {
-    color: '#3B82F6',
+    color: "#3B82F6",
     fontSize: 14,
   },
   dangerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 10,
     marginTop: 8,
     gap: 6,
   },
   dangerButtonText: {
-    color: '#F87171',
+    color: "#F87171",
     fontSize: 14,
   },
 });

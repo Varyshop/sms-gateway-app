@@ -21,10 +21,19 @@ export interface PhoneStats {
   rate_limit: number;
 }
 
+export interface PhoneCounters {
+  sent_today: number;
+  daily_limit: number;
+  sent_month: number;
+  monthly_limit: number;
+  sent_total: number;
+}
+
 export interface HeartbeatResponse {
   success: boolean;
   pending_count: Record<string, number>;
   rate_limit: number;
+  phone_stats?: Record<string, PhoneCounters>;
 }
 
 export interface PendingSmsResponse {

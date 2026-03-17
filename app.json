@@ -21,14 +21,16 @@
         "android.permission.RECEIVE_SMS",
         "android.permission.READ_SMS",
         "android.permission.READ_PHONE_STATE",
-        "android.permission.READ_PHONE_NUMBERS"
+        "android.permission.READ_PHONE_NUMBERS",
+        "android.permission.WRITE_SECURE_SETTINGS"
       ]
     },
     "ios": {
       "bundleIdentifier": "com.varyshop.smsgatewayapp"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "./modules/gateway-service/app.plugin.js"
     ],
     "extra": {
       "eas": {
