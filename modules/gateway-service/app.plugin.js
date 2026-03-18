@@ -16,6 +16,8 @@ function withGatewayService(config) {
   config = AndroidConfig.Permissions.withPermissions(config, [
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+    "android.permission.SCHEDULE_EXACT_ALARM",
+    "android.permission.USE_EXACT_ALARM",
     "android.permission.WAKE_LOCK",
     "android.permission.RECEIVE_BOOT_COMPLETED",
     "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",

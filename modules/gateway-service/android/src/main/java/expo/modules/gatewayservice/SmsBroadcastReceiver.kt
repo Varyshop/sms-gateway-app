@@ -4,24 +4,29 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.PowerManager
 import android.provider.Telephony
 import android.telephony.SubscriptionManager
 import android.util.Log
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequest
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import java.util.concurrent.TimeUnit
 
 /**
  * Static BroadcastReceiver declared in AndroidManifest.xml.
  * Receives SMS even when the app is not running or screen is off.
  *
- * When an SMS arrives, it forwards the data to SmsGatewayService
- * which handles the server communication in the background.
+ * Enqueues inbound SMS reporting via WorkManager (guaranteed delivery
+ * even in Doze mode on MIUI/Xiaomi), and also forwards to
+ * SmsGatewayService for immediate processing if running.
  */
 class SmsBroadcastReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "SmsBroadcastReceiver"
-        private const val WAKELOCK_TAG = "SmsGateway:SmsReceive"
-        private const val WAKELOCK_TIMEOUT_MS = 15_000L // 15s max
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -30,58 +35,65 @@ class SmsBroadcastReceiver : BroadcastReceiver() {
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if (messages.isNullOrEmpty()) return
 
-        // Acquire WakeLock to ensure CPU stays awake while we process
-        // and forward the SMS to the service (screen may be off).
-        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        val wakeLock = pm.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            WAKELOCK_TAG
-        )
-        wakeLock.acquire(WAKELOCK_TIMEOUT_MS)
+        Log.i(TAG, "Received ${messages.size} SMS parts")
 
-        try {
-            Log.i(TAG, "Received ${messages.size} SMS parts")
+        // Group message parts by sender
+        val grouped = mutableMapOf<String, StringBuilder>()
+        var toNumber = ""
 
-            // Group message parts by sender
-            val grouped = mutableMapOf<String, StringBuilder>()
-            var toNumber = ""
+        for (msg in messages) {
+            val from = msg.originatingAddress ?: continue
+            grouped.getOrPut(from) { StringBuilder() }.append(msg.messageBody ?: "")
 
-            for (msg in messages) {
-                val from = msg.originatingAddress ?: continue
-                grouped.getOrPut(from) { StringBuilder() }.append(msg.messageBody ?: "")
-
-                // Try to get receiving number from subscription info
-                if (toNumber.isEmpty()) {
-                    val subId = intent.extras?.getInt("subscription", -1) ?: -1
-                    if (subId >= 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
-                        try {
-                            val subManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager
-                            val subInfo = subManager?.getActiveSubscriptionInfo(subId)
-                            toNumber = subInfo?.number ?: ""
-                        } catch (_: SecurityException) { }
-                    }
+            // Try to get receiving number from subscription info
+            if (toNumber.isEmpty()) {
+                val subId = intent.extras?.getInt("subscription", -1) ?: -1
+                if (subId >= 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+                    try {
+                        val subManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager
+                        val subInfo = subManager?.getActiveSubscriptionInfo(subId)
+                        toNumber = subInfo?.number ?: ""
+                    } catch (_: SecurityException) { }
                 }
             }
+        }
 
-            // Forward each grouped message to the foreground service
-            for ((from, body) in grouped) {
-                Log.i(TAG, "Forwarding SMS from $from to service")
+        // Enqueue each grouped message via WorkManager for guaranteed delivery
+        for ((from, body) in grouped) {
+            Log.i(TAG, "Enqueuing inbound SMS from $from via WorkManager")
+
+            val inputData = workDataOf(
+                "from" to from,
+                "message" to body.toString(),
+                "to" to toNumber,
+            )
+
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val workRequest = OneTimeWorkRequest.Builder(InboundSmsWorker::class.java)
+                .setInputData(inputData)
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+                .build()
+
+            WorkManager.getInstance(context).enqueue(workRequest)
+
+            // Also forward to service for immediate processing (best-effort)
+            if (SmsGatewayService.isRunning) {
                 SmsGatewayService.reportInboundSms(context, from, body.toString(), toNumber)
             }
+        }
 
-            // Ensure the foreground service is running (it may have been killed)
-            if (!SmsGatewayService.isRunning) {
-                Log.i(TAG, "Service not running, attempting to start")
-                try {
-                    SmsGatewayService.start(context)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to restart service", e)
-                }
-            }
-        } finally {
+        // Ensure the foreground service is running (it may have been killed)
+        if (!SmsGatewayService.isRunning) {
+            Log.i(TAG, "Service not running, attempting to start")
             try {
-                if (wakeLock.isHeld) wakeLock.release()
-            } catch (_: Exception) {}
+                SmsGatewayService.start(context)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to restart service", e)
+            }
         }
     }
 }

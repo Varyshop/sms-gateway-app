@@ -1,6 +1,7 @@
 package expo.modules.gatewayservice
 
 import android.app.Activity
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -16,6 +17,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
 import android.util.Log
@@ -58,6 +60,8 @@ class SmsGatewayService : Service() {
         const val ACTION_FCM_WAKE = "expo.modules.gatewayservice.FCM_WAKE"
         const val ACTION_REGISTER_FCM = "expo.modules.gatewayservice.REGISTER_FCM"
         const val ACTION_STATUS_CHANGED = "expo.modules.gatewayservice.STATUS_CHANGED"
+        const val ACTION_ALARM_POLL = "expo.modules.gatewayservice.ALARM_POLL"
+        const val ACTION_ALARM_HEARTBEAT = "expo.modules.gatewayservice.ALARM_HEARTBEAT"
         const val EXTRA_SMS_ID = "sms_id"
         const val EXTRA_PART_INDEX = "part_index"
         const val EXTRA_TOTAL_PARTS = "total_parts"
@@ -200,8 +204,7 @@ class SmsGatewayService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var scheduler: ScheduledExecutorService? = null
-    private var pollFuture: ScheduledFuture<*>? = null
-    private var heartbeatFuture: ScheduledFuture<*>? = null
+    // pollFuture/heartbeatFuture replaced by AlarmManager (MIUI-safe)
     private val executor = Executors.newSingleThreadExecutor()
 
     private lateinit var prefs: SharedPreferences
@@ -264,6 +267,16 @@ class SmsGatewayService : Service() {
             ACTION_REGISTER_FCM -> {
                 val token = intent.getStringExtra("fcm_token") ?: return START_STICKY
                 executor.execute { registerFcmTokenToServer(token) }
+            }
+            ACTION_ALARM_POLL -> {
+                Log.d(TAG, "AlarmManager poll trigger")
+                executor.execute { pollAndSend() }
+                scheduleNextPollAlarm()
+            }
+            ACTION_ALARM_HEARTBEAT -> {
+                Log.d(TAG, "AlarmManager heartbeat trigger")
+                executor.execute { sendHeartbeat() }
+                scheduleNextHeartbeatAlarm()
             }
             else -> startGateway()
         }
@@ -330,8 +343,8 @@ class SmsGatewayService : Service() {
         Log.i(TAG, "Stopping SMS Gateway Service")
         isRunning = false
 
-        pollFuture?.cancel(false)
-        heartbeatFuture?.cancel(false)
+        cancelAlarms()
+        batchFlushFuture?.cancel(false)
         scheduler?.shutdown()
         scheduler = null
 
@@ -493,34 +506,16 @@ class SmsGatewayService : Service() {
     }
 
     // ---- Schedulers ----
+    //
+    // Uses AlarmManager.setExactAndAllowWhileIdle() for poll + heartbeat
+    // instead of ScheduledExecutorService which MIUI suspends in Doze.
+    // Batch flush stays on ScheduledExecutorService (runs only when
+    // poll/heartbeat just ran and service is awake anyway).
 
     private fun startSchedulers() {
-        scheduler = Executors.newScheduledThreadPool(3)
+        scheduler = Executors.newScheduledThreadPool(2)
 
-        // When FCM token is present, polling is only a fallback (5 min).
-        // Old app versions without FCM keep the configured interval (default 10s).
-        val hasFcmToken = !prefs.getString("fcm_token", "").isNullOrEmpty()
-        val pollInterval = if (hasFcmToken) {
-            pollingIntervalSec.coerceAtLeast(300)  // 5 min fallback with FCM
-        } else {
-            pollingIntervalSec.coerceAtLeast(5)    // Legacy polling mode
-        }
-        pollFuture = scheduler?.scheduleWithFixedDelay(
-            { pollAndSend() },
-            0,
-            pollInterval,
-            TimeUnit.SECONDS
-        )
-
-        val hbInterval = heartbeatIntervalSec.coerceAtLeast(30)
-        heartbeatFuture = scheduler?.scheduleWithFixedDelay(
-            { sendHeartbeat() },
-            5,
-            hbInterval,
-            TimeUnit.SECONDS
-        )
-
-        // Flush batch queue every 3 seconds
+        // Batch flush every 3s — only matters when service is active
         batchFlushFuture = scheduler?.scheduleWithFixedDelay(
             { flushBatchQueue() },
             3,
@@ -528,12 +523,71 @@ class SmsGatewayService : Service() {
             TimeUnit.SECONDS
         )
 
-        Log.i(TAG, "Schedulers started: poll=${pollInterval}s, heartbeat=${hbInterval}s, batchFlush=3s")
+        // Initial poll immediately
+        executor.execute { pollAndSend() }
+
+        // Initial heartbeat after 5s
+        scheduler?.schedule({ sendHeartbeat() }, 5, TimeUnit.SECONDS)
+
+        // Schedule recurring poll + heartbeat via AlarmManager
+        scheduleNextPollAlarm()
+        scheduleNextHeartbeatAlarm()
+
+        val pollSec = getEffectivePollIntervalSec()
+        val hbSec = heartbeatIntervalSec.coerceAtLeast(30)
+        Log.i(TAG, "Schedulers started: poll=${pollSec}s (alarm), heartbeat=${hbSec}s (alarm), batchFlush=3s")
+    }
+
+    private fun getEffectivePollIntervalSec(): Long {
+        val hasFcmToken = !prefs.getString("fcm_token", "").isNullOrEmpty()
+        return if (hasFcmToken) {
+            pollingIntervalSec.coerceAtLeast(300)  // 5 min fallback with FCM
+        } else {
+            pollingIntervalSec.coerceAtLeast(5)    // Legacy polling mode
+        }
+    }
+
+    private fun scheduleNextPollAlarm() {
+        val intervalMs = getEffectivePollIntervalSec() * 1000
+        scheduleAlarm(ACTION_ALARM_POLL, 100, intervalMs)
+    }
+
+    private fun scheduleNextHeartbeatAlarm() {
+        val intervalMs = heartbeatIntervalSec.coerceAtLeast(30) * 1000
+        scheduleAlarm(ACTION_ALARM_HEARTBEAT, 101, intervalMs)
+    }
+
+    private fun scheduleAlarm(action: String, requestCode: Int, delayMs: Long) {
+        val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(this, SmsGatewayService::class.java).apply {
+            this.action = action
+        }
+        val pi = PendingIntent.getForegroundService(
+            this, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val triggerAt = SystemClock.elapsedRealtime() + delayMs
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            am.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+        } else {
+            am.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+        }
+    }
+
+    private fun cancelAlarms() {
+        val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        for ((action, code) in listOf(ACTION_ALARM_POLL to 100, ACTION_ALARM_HEARTBEAT to 101)) {
+            val intent = Intent(this, SmsGatewayService::class.java).apply { this.action = action }
+            val pi = PendingIntent.getForegroundService(
+                this, code, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            am.cancel(pi)
+        }
     }
 
     private fun restartSchedulers() {
-        pollFuture?.cancel(false)
-        heartbeatFuture?.cancel(false)
+        cancelAlarms()
         batchFlushFuture?.cancel(false)
         scheduler?.shutdown()
         scheduler = null
@@ -995,7 +1049,7 @@ class SmsGatewayService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "SMS Gateway",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "SMS Gateway naslouchá příchozím a odchozím SMS na pozadí"
                 setShowBadge(false)
@@ -1022,7 +1076,7 @@ class SmsGatewayService : Service() {
             .setSmallIcon(android.R.drawable.ic_dialog_email)
             .setOngoing(true)
             .apply { if (pendingIntent != null) setContentIntent(pendingIntent) }
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
     }
 
@@ -1036,8 +1090,7 @@ class SmsGatewayService : Service() {
     override fun onDestroy() {
         Log.i(TAG, "Service destroyed")
         isRunning = false
-        pollFuture?.cancel(false)
-        heartbeatFuture?.cancel(false)
+        cancelAlarms()
         batchFlushFuture?.cancel(false)
         scheduler?.shutdown()
         unregisterSmsReceivers()
