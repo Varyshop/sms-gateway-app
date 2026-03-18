@@ -79,6 +79,28 @@ function withGatewayService(config) {
       });
     }
 
+    // --- Add FcmMessageHandler ---
+    if (!hasComponent("service", "FcmMessageHandler")) {
+      if (!application.service) application.service = [];
+      application.service.push({
+        $: {
+          "android:name": `${PKG}.FcmMessageHandler`,
+          "android:exported": "false",
+        },
+        "intent-filter": [
+          {
+            action: [
+              {
+                $: {
+                  "android:name": "com.google.firebase.MESSAGING_EVENT",
+                },
+              },
+            ],
+          },
+        ],
+      });
+    }
+
     // --- Add BootReceiver ---
     if (!hasComponent("receiver", "BootReceiver")) {
       if (!application.receiver) application.receiver = [];

@@ -55,6 +55,9 @@ class SmsGatewayService : Service() {
         const val ACTION_UPDATE_CONFIG = "expo.modules.gatewayservice.UPDATE_CONFIG"
         const val ACTION_SMS_SENT = "expo.modules.gatewayservice.SMS_SENT"
         const val ACTION_SMS_DELIVERED = "expo.modules.gatewayservice.SMS_DELIVERED"
+        const val ACTION_FCM_WAKE = "expo.modules.gatewayservice.FCM_WAKE"
+        const val ACTION_REGISTER_FCM = "expo.modules.gatewayservice.REGISTER_FCM"
+        const val ACTION_STATUS_CHANGED = "expo.modules.gatewayservice.STATUS_CHANGED"
         const val EXTRA_SMS_ID = "sms_id"
         const val EXTRA_PART_INDEX = "part_index"
         const val EXTRA_TOTAL_PARTS = "total_parts"
@@ -136,6 +139,63 @@ class SmsGatewayService : Service() {
                 context.startService(intent)
             }
         }
+
+        /**
+         * Trigger an immediate poll cycle from an FCM wake signal.
+         * Called by FcmMessageHandler when a data message arrives.
+         */
+        fun triggerImmediatePoll(context: Context) {
+            val intent = Intent(context, SmsGatewayService::class.java).apply {
+                action = ACTION_FCM_WAKE
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /**
+         * Register a new FCM token with the Odoo server.
+         * Called by FcmMessageHandler.onNewToken when the token rotates.
+         */
+        fun registerFcmToken(context: Context, token: String) {
+            val intent = Intent(context, SmsGatewayService::class.java).apply {
+                action = ACTION_REGISTER_FCM
+                putExtra("fcm_token", token)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+    }
+
+    /**
+     * Broadcast status change to GatewayServiceModule → JS EventEmitter.
+     * Uses an explicit broadcast so the Expo module can pick it up.
+     */
+    private fun broadcastStatusChange() {
+        try {
+            val intent = Intent(ACTION_STATUS_CHANGED).apply {
+                putExtra("isRunning", isRunning)
+                putExtra("pendingCount", pendingCount)
+                putExtra("sentToday", sentToday)
+                putExtra("sentMonth", sentMonth)
+                putExtra("sentTotal", sentTotal)
+                putExtra("dailyLimit", dailyLimit)
+                putExtra("monthlyLimit", monthlyLimit)
+                putExtra("sessionSentCount", sessionSentCount)
+                putExtra("sessionErrorCount", sessionErrorCount)
+                putExtra("lastPollTime", lastPollTime)
+                putExtra("lastHeartbeatTime", lastHeartbeatTime)
+                setPackage(packageName)
+            }
+            sendBroadcast(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to broadcast status change", e)
+        }
     }
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -197,6 +257,14 @@ class SmsGatewayService : Service() {
             ACTION_UPDATE_CONFIG -> {
                 restartSchedulers()
             }
+            ACTION_FCM_WAKE -> {
+                Log.i(TAG, "FCM wake received, triggering immediate poll")
+                executor.execute { pollAndSend() }
+            }
+            ACTION_REGISTER_FCM -> {
+                val token = intent.getStringExtra("fcm_token") ?: return START_STICKY
+                executor.execute { registerFcmTokenToServer(token) }
+            }
             else -> startGateway()
         }
         return START_STICKY
@@ -250,6 +318,9 @@ class SmsGatewayService : Service() {
 
         isRunning = true
         startSchedulers()
+
+        // Register FCM token with server
+        obtainAndRegisterFcmToken()
 
         // Retroactive STOP check
         executor.execute { retroactiveStopCheck() }
@@ -381,6 +452,7 @@ class SmsGatewayService : Service() {
             Log.e(TAG, "SMS ${tracker.smsId}: ${tracker.failedParts}/${tracker.totalParts} parts failed: $reason")
             addToBatchQueue(tracker.smsId, "error", reason)
         }
+        broadcastStatusChange()
     }
 
     // ---- Batch Queue for Server Confirmation ----
@@ -425,7 +497,14 @@ class SmsGatewayService : Service() {
     private fun startSchedulers() {
         scheduler = Executors.newScheduledThreadPool(3)
 
-        val pollInterval = pollingIntervalSec.coerceAtLeast(5)
+        // When FCM token is present, polling is only a fallback (5 min).
+        // Old app versions without FCM keep the configured interval (default 10s).
+        val hasFcmToken = !prefs.getString("fcm_token", "").isNullOrEmpty()
+        val pollInterval = if (hasFcmToken) {
+            pollingIntervalSec.coerceAtLeast(300)  // 5 min fallback with FCM
+        } else {
+            pollingIntervalSec.coerceAtLeast(5)    // Legacy polling mode
+        }
         pollFuture = scheduler?.scheduleWithFixedDelay(
             { pollAndSend() },
             0,
@@ -499,6 +578,7 @@ class SmsGatewayService : Service() {
             val count = smsList.length()
             Log.i(TAG, "Found $count pending SMS")
             pendingCount = count
+            broadcastStatusChange()
 
             val delayMs = if (rateLimit > 0) (60000L / rateLimit).coerceAtLeast(100) else 600L
 
@@ -617,6 +697,7 @@ class SmsGatewayService : Service() {
                     dailyLimit = response.optInt("daily_limit", dailyLimit)
                     monthlyLimit = response.optInt("monthly_limit", monthlyLimit)
                     persistCounters()
+                    broadcastStatusChange()
                 }
 
                 val errors = response.optJSONArray("errors")
@@ -690,6 +771,26 @@ class SmsGatewayService : Service() {
                 }
 
                 Log.d(TAG, "Heartbeat OK, pending=$pendingCount, today=$sentToday, month=$sentMonth, total=$sentTotal")
+                broadcastStatusChange()
+
+                // Safety net: if FCM push didn't arrive but server has pending SMS,
+                // trigger a poll. This covers FCM misconfiguration or network issues.
+                if (pendingCount > 0) {
+                    val timeSinceLastPoll = System.currentTimeMillis() - lastPollTime
+                    if (timeSinceLastPoll > heartbeatIntervalSec * 1000) {
+                        Log.w(TAG, "FCM missed: $pendingCount pending, last poll ${timeSinceLastPoll}ms ago — triggering poll")
+                        executor.execute { pollAndSend() }
+                    }
+                }
+            }
+
+            // Re-register FCM token periodically (every 10th heartbeat) for reliability
+            heartbeatCount++
+            if (heartbeatCount % 10 == 0) {
+                val storedToken = prefs.getString("fcm_token", null)
+                if (!storedToken.isNullOrEmpty()) {
+                    registerFcmTokenToServer(storedToken)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Heartbeat error", e)
@@ -722,6 +823,49 @@ class SmsGatewayService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to report inbound SMS", e)
+        }
+    }
+
+    // ---- FCM Token Registration ----
+
+    @Volatile
+    private var heartbeatCount = 0
+
+    private fun registerFcmTokenToServer(token: String) {
+        val url = apiUrl
+        val key = apiKey
+        if (url.isEmpty() || key.isEmpty()) return
+
+        try {
+            val body = JSONObject().apply {
+                put("fcm_token", token)
+            }
+            val response = httpPost("$url/sms-gateway/register-fcm", key, body)
+            if (response != null && response.optBoolean("success", false)) {
+                Log.i(TAG, "FCM token registered with server")
+            } else {
+                Log.e(TAG, "Failed to register FCM token with server")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "FCM token registration error", e)
+        }
+    }
+
+    private fun obtainAndRegisterFcmToken() {
+        try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token ->
+                    if (token != null) {
+                        prefs.edit().putString("fcm_token", token).apply()
+                        executor.execute { registerFcmTokenToServer(token) }
+                        Log.i(TAG, "FCM token obtained and registration queued")
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "Could not get FCM token: ${e.message}")
+                }
+        } catch (e: Exception) {
+            Log.w(TAG, "Firebase not available, FCM disabled: ${e.message}")
         }
     }
 

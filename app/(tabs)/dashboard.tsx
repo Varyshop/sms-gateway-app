@@ -13,7 +13,7 @@ import { getApiClient } from '../../src/api/gatewayClient';
 import { onHeartbeat, isHeartbeatActive, startHeartbeat, stopHeartbeat } from '../../src/services/heartbeatService';
 import { startSmsQueue, stopSmsQueue, stopSmsQueueFull, isQueueActive } from '../../src/services/smsQueueService';
 import { startInboundSmsListener, stopInboundSmsListener } from '../../src/services/inboundSmsService';
-import GatewayService, { ServiceStatus } from '../../modules/gateway-service';
+import GatewayService, { ServiceStatus, onStatusChange } from '../../modules/gateway-service';
 import { HeartbeatResponse, PhoneStats } from '../../src/types';
 
 function formatLimit(value: number, limit: number): string {
@@ -41,32 +41,50 @@ export default function DashboardScreen() {
   const [phoneStats, setPhoneStats] = useState<PhoneStats[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fcmConnected, setFcmConnected] = useState(false);
 
   useEffect(() => {
     setConfigured(isConfigured());
     setServiceRunning(isQueueActive());
 
-    // Check native service status
-    GatewayService.isRunning().then((running) => {
-      setNativeServiceRunning(running);
-      if (running && !isQueueActive()) {
+    // Check native service status + FCM token
+    GatewayService.getStatus().then((status) => {
+      setNativeServiceRunning(status.isRunning);
+      setFcmConnected(!!status.fcmToken);
+      if (status.isRunning && !isQueueActive()) {
         setServiceRunning(true);
       }
     });
 
-    const unsubscribe = onHeartbeat((response: HeartbeatResponse) => {
+    const unsubscribeHeartbeat = onHeartbeat((response: HeartbeatResponse) => {
       setPendingCount(response.pending_count);
     });
 
-    // Periodically refresh native service status
-    const statusInterval = setInterval(async () => {
-      const running = await GatewayService.isRunning();
-      setNativeServiceRunning(running);
-    }, 10000);
+    // Real-time status updates from native service via EventEmitter
+    const statusSubscription = onStatusChange((status: ServiceStatus) => {
+      setNativeServiceRunning(status.isRunning);
+      setFcmConnected(!!status.fcmToken);
+      // Update phone stats inline from native counters
+      setPhoneStats((prev) => {
+        if (prev.length === 0) return prev;
+        return prev.map((phone, i) =>
+          i === 0
+            ? {
+                ...phone,
+                sent_today: status.sentToday,
+                sent_month: status.sentMonth,
+                sent_total: status.sentTotal,
+                daily_limit: status.dailyLimit,
+                monthly_limit: status.monthlyLimit,
+              }
+            : phone
+        );
+      });
+    });
 
     return () => {
-      unsubscribe();
-      clearInterval(statusInterval);
+      unsubscribeHeartbeat();
+      statusSubscription?.remove();
     };
   }, []);
 
@@ -143,9 +161,15 @@ export default function DashboardScreen() {
     >
       <View style={styles.header}>
         <Text style={styles.title}>SMS Gateway</Text>
-        <View style={[styles.statusBadge, (serviceRunning || nativeServiceRunning) ? styles.statusOnline : styles.statusOffline]}>
-          <View style={[styles.statusDot, (serviceRunning || nativeServiceRunning) ? styles.dotOnline : styles.dotOffline]} />
-          <Text style={styles.statusText}>{(serviceRunning || nativeServiceRunning) ? 'Online' : 'Offline'}</Text>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <View style={[styles.statusBadge, fcmConnected ? styles.statusOnline : styles.statusOffline]}>
+            <Ionicons name="notifications-outline" size={10} color="#F9FAFB" style={{ marginRight: 4 }} />
+            <Text style={styles.statusText}>{fcmConnected ? 'FCM' : 'Poll'}</Text>
+          </View>
+          <View style={[styles.statusBadge, (serviceRunning || nativeServiceRunning) ? styles.statusOnline : styles.statusOffline]}>
+            <View style={[styles.statusDot, (serviceRunning || nativeServiceRunning) ? styles.dotOnline : styles.dotOffline]} />
+            <Text style={styles.statusText}>{(serviceRunning || nativeServiceRunning) ? 'Online' : 'Offline'}</Text>
+          </View>
         </View>
       </View>
 

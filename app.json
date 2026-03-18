@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.varyshop.smsgatewayapp",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#111827"
@@ -22,7 +23,8 @@
         "android.permission.READ_SMS",
         "android.permission.READ_PHONE_STATE",
         "android.permission.READ_PHONE_NUMBERS",
-        "android.permission.WRITE_SECURE_SETTINGS"
+        "android.permission.WRITE_SECURE_SETTINGS",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "ios": {

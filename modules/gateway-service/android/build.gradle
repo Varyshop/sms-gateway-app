@@ -26,4 +26,6 @@ android {
 
 dependencies {
   implementation project(':expo-modules-core')
+  implementation platform('com.google.firebase:firebase-bom:33.7.0')
+  implementation 'com.google.firebase:firebase-messaging'
 }

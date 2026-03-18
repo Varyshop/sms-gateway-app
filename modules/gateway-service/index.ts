@@ -1,4 +1,4 @@
-import { requireNativeModule, Platform } from "expo-modules-core";
+import { requireNativeModule, Platform, EventEmitter, Subscription } from "expo-modules-core";
 
 export interface ServiceStatus {
   isRunning: boolean;
@@ -12,6 +12,7 @@ export interface ServiceStatus {
   monthlyLimit: number;
   sessionSentCount: number;
   sessionErrorCount: number;
+  fcmToken: string;
 }
 
 interface GatewayServiceModule {
@@ -34,10 +35,22 @@ interface GatewayServiceModule {
   ): Promise<boolean>;
   isBatteryOptimizationDisabled(): Promise<boolean>;
   requestBatteryOptimizationExemption(): Promise<boolean>;
+  getFcmToken(): Promise<string | null>;
 }
 
 const GatewayService: GatewayServiceModule | null =
   Platform.OS === "android" ? requireNativeModule("GatewayService") : null;
+
+const emitter = GatewayService ? new EventEmitter(GatewayService as any) : null;
+
+/**
+ * Subscribe to real-time status updates from the native service.
+ * Fires whenever counters change (SMS sent, pending updated, heartbeat, etc.)
+ */
+export function onStatusChange(callback: (status: ServiceStatus) => void): Subscription | null {
+  if (!emitter) return null;
+  return emitter.addListener("onStatusChange", callback);
+}
 
 /**
  * Start the native foreground service for SMS gateway.
@@ -86,8 +99,14 @@ export async function getStatus(): Promise<ServiceStatus> {
       lastPollTime: 0,
       lastHeartbeatTime: 0,
       pendingCount: 0,
-      sentCount: 0,
-      errorCount: 0,
+      sentToday: 0,
+      sentMonth: 0,
+      sentTotal: 0,
+      dailyLimit: 0,
+      monthlyLimit: 0,
+      sessionSentCount: 0,
+      sessionErrorCount: 0,
+      fcmToken: '',
     };
   }
   return GatewayService.getStatus();
@@ -130,6 +149,15 @@ export async function requestBatteryOptimizationExemption(): Promise<boolean> {
   return GatewayService.requestBatteryOptimizationExemption();
 }
 
+/**
+ * Get the current FCM token for this device.
+ * Returns null if Firebase is not available.
+ */
+export async function getFcmToken(): Promise<string | null> {
+  if (!GatewayService) return null;
+  return GatewayService.getFcmToken();
+}
+
 export default {
   startService,
   stopService,
@@ -138,4 +166,6 @@ export default {
   updateConfig,
   isBatteryOptimizationDisabled,
   requestBatteryOptimizationExemption,
+  getFcmToken,
+  onStatusChange,
 };

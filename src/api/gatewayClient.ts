@@ -102,6 +102,12 @@ export class GatewayApiClient {
   async getStats(): Promise<StatsResponse> {
     return this.request<StatsResponse>('/sms-gateway/stats');
   }
+
+  async registerFcmToken(fcmToken: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>('/sms-gateway/register-fcm', {
+      fcm_token: fcmToken,
+    });
+  }
 }
 
 let clientInstance: GatewayApiClient | null = null;

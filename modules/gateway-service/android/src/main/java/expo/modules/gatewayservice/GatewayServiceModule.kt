@@ -1,17 +1,35 @@
 package expo.modules.gatewayservice
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.messaging.FirebaseMessaging
 
 class GatewayServiceModule : Module() {
+
+    private var statusReceiver: BroadcastReceiver? = null
+
     override fun definition() = ModuleDefinition {
         Name("GatewayService")
+
+        // Declare the event that JS can subscribe to
+        Events("onStatusChange")
+
+        OnCreate {
+            registerStatusReceiver()
+        }
+
+        OnDestroy {
+            unregisterStatusReceiver()
+        }
 
         /**
          * Start the foreground service.
@@ -55,6 +73,11 @@ class GatewayServiceModule : Module() {
          * Get service status (for UI display).
          */
         AsyncFunction("getStatus") {
+            val context = appContext.reactContext
+            val fcmToken = context?.getSharedPreferences(
+                SmsGatewayService.PREFS_NAME, Context.MODE_PRIVATE
+            )?.getString("fcm_token", "") ?: ""
+
             return@AsyncFunction mapOf(
                 "isRunning" to SmsGatewayService.isRunning,
                 "lastPollTime" to SmsGatewayService.lastPollTime,
@@ -66,8 +89,22 @@ class GatewayServiceModule : Module() {
                 "dailyLimit" to SmsGatewayService.dailyLimit,
                 "monthlyLimit" to SmsGatewayService.monthlyLimit,
                 "sessionSentCount" to SmsGatewayService.sessionSentCount,
-                "sessionErrorCount" to SmsGatewayService.sessionErrorCount
+                "sessionErrorCount" to SmsGatewayService.sessionErrorCount,
+                "fcmToken" to fcmToken,
             )
+        }
+
+        /**
+         * Get the current FCM token for this device.
+         * Returns null if Firebase is not available.
+         */
+        AsyncFunction("getFcmToken") {
+            try {
+                val token = Tasks.await(FirebaseMessaging.getInstance().token)
+                return@AsyncFunction token
+            } catch (e: Exception) {
+                return@AsyncFunction null
+            }
         }
 
         /**
@@ -126,5 +163,48 @@ class GatewayServiceModule : Module() {
             }
             return@AsyncFunction false // already exempt or pre-M
         }
+    }
+
+    private fun registerStatusReceiver() {
+        val context = appContext.reactContext ?: return
+        statusReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                if (intent.action != SmsGatewayService.ACTION_STATUS_CHANGED) return
+                try {
+                    val fcmToken = ctx.getSharedPreferences(
+                        SmsGatewayService.PREFS_NAME, Context.MODE_PRIVATE
+                    )?.getString("fcm_token", "") ?: ""
+
+                    sendEvent("onStatusChange", mapOf(
+                        "isRunning" to intent.getBooleanExtra("isRunning", false),
+                        "pendingCount" to intent.getIntExtra("pendingCount", 0),
+                        "sentToday" to intent.getIntExtra("sentToday", 0),
+                        "sentMonth" to intent.getIntExtra("sentMonth", 0),
+                        "sentTotal" to intent.getIntExtra("sentTotal", 0),
+                        "dailyLimit" to intent.getIntExtra("dailyLimit", 0),
+                        "monthlyLimit" to intent.getIntExtra("monthlyLimit", 0),
+                        "sessionSentCount" to intent.getIntExtra("sessionSentCount", 0),
+                        "sessionErrorCount" to intent.getIntExtra("sessionErrorCount", 0),
+                        "lastPollTime" to intent.getLongExtra("lastPollTime", 0),
+                        "lastHeartbeatTime" to intent.getLongExtra("lastHeartbeatTime", 0),
+                        "fcmToken" to fcmToken,
+                    ))
+                } catch (_: Exception) {}
+            }
+        }
+        val filter = IntentFilter(SmsGatewayService.ACTION_STATUS_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(statusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(statusReceiver, filter)
+        }
+    }
+
+    private fun unregisterStatusReceiver() {
+        val context = appContext.reactContext ?: return
+        statusReceiver?.let {
+            try { context.unregisterReceiver(it) } catch (_: Exception) {}
+        }
+        statusReceiver = null
     }
 }

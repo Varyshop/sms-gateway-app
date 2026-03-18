@@ -14,7 +14,7 @@ const KEYS = {
 } as const;
 
 const DEFAULTS = {
-  POLLING_INTERVAL: 10, // seconds
+  POLLING_INTERVAL: 300, // seconds (5 min fallback; FCM is primary trigger)
   HEARTBEAT_INTERVAL: 60, // seconds
   SMS_CHECK_MAX_COUNT: 1000,
   SMS_CHECK_INTERVAL_MS: 60000, // 1 minute

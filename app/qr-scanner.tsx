@@ -10,7 +10,8 @@ import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { setApiUrl, setApiKey } from '../src/storage/settings';
-import { initializeApiClient } from '../src/api/gatewayClient';
+import { initializeApiClient, getApiClient } from '../src/api/gatewayClient';
+import { getFcmToken } from '../modules/gateway-service';
 import { QrCodeData } from '../src/types';
 
 export default function QrScannerScreen() {
@@ -18,7 +19,7 @@ export default function QrScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
 
-  const handleBarCodeScanned = ({ data }: { data: string }) => {
+  const handleBarCodeScanned = async ({ data }: { data: string }) => {
     if (scanned) return;
     setScanned(true);
 
@@ -45,6 +46,18 @@ export default function QrScannerScreen() {
 
       // Initialize API client
       initializeApiClient(parsed.url, parsed.api_key);
+
+      // Register FCM token with server for push notifications
+      try {
+        const fcmToken = await getFcmToken();
+        if (fcmToken) {
+          const client = getApiClient();
+          await client?.registerFcmToken(fcmToken);
+          console.log('[QR] FCM token registered with server');
+        }
+      } catch (e) {
+        console.warn('[QR] FCM token registration failed:', e);
+      }
 
       Alert.alert(
         'Sparovano',

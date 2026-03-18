@@ -14,13 +14,18 @@ SplashScreen.preventAutoHideAsync();
 async function requestSmsPermissions() {
   if (Platform.OS !== 'android') return false;
   try {
-    const result = await PermissionsAndroid.requestMultiple([
+    const perms: Array<(typeof PermissionsAndroid.PERMISSIONS)[keyof typeof PermissionsAndroid.PERMISSIONS]> = [
       PermissionsAndroid.PERMISSIONS.SEND_SMS,
       PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
       PermissionsAndroid.PERMISSIONS.READ_SMS,
       PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
       PermissionsAndroid.PERMISSIONS.READ_PHONE_NUMBERS,
-    ]);
+    ];
+    // Android 13+ requires POST_NOTIFICATIONS for FCM push
+    if (Number(Platform.Version) >= 33) {
+      perms.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+    }
+    const result = await PermissionsAndroid.requestMultiple(perms);
     return Object.values(result).every(
       (status) => status === PermissionsAndroid.RESULTS.GRANTED
     );
@@ -53,6 +58,9 @@ const AppLayout = () => {
     const loadStorage = async () => {
       await preloadStorage();
       await requestSmsPermissions();
+      // Request battery optimization exemption early — needed for
+      // reliable background SMS delivery even when screen is off.
+      await requestBatteryOptimizationExemption();
       setStorageReady(true);
     };
     loadStorage();
@@ -78,8 +86,6 @@ const AppLayout = () => {
           startHeartbeat();
           // JS-side inbound listener (supplement, native receiver handles background)
           startInboundSmsListener();
-          // Request battery optimization exemption
-          requestBatteryOptimizationExemption();
         }
 
         servicesInitialized.current = true;

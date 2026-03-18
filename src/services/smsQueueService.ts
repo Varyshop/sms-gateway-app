@@ -158,11 +158,12 @@ export function startSmsQueue(): void {
     .then(() => console.log('[SmsQueue] Native foreground service started'))
     .catch((err) => console.error('[SmsQueue] Failed to start native service:', err));
 
-  // JS-side polling as supplement for foreground UI updates
-  const intervalMs = settings.pollingInterval * 1000;
-  console.log(`[SmsQueue] Starting JS-side polling with ${settings.pollingInterval}s interval`);
+  // JS-side polling is a supplement for foreground UI updates only.
+  // FCM push is the primary trigger in the native service; JS polls at 5-min fallback.
+  const fallbackIntervalMs = 300000; // 5 minutes
+  console.log('[SmsQueue] Starting JS-side polling with 5-min fallback interval (FCM is primary)');
   pollAndSend();
-  pollingInterval = setInterval(pollAndSend, intervalMs);
+  pollingInterval = setInterval(pollAndSend, fallbackIntervalMs);
   appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
 }
 
