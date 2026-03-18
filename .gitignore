@@ -14,6 +14,9 @@ android/app/build/
 android/build/
 android/.gradle/
 
+# Release APKs (distributed via GitHub Releases)
+*.apk
+
 # Native module build artifacts
 modules/*/android/build/
 modules/*/android/.gradle/
