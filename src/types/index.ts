@@ -62,6 +62,25 @@ export interface QrCodeData {
   api_key: string;
 }
 
+export interface InboundSmsItem {
+  id: number;
+  from_number: string;
+  to_number: string;
+  message: string;
+  received_at: string;
+  is_stop: boolean;
+  blacklisted: boolean;
+  partner_name: string;
+}
+
+export interface InboundHistoryResponse {
+  success: boolean;
+  messages: InboundSmsItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface SmsHistoryItem {
   id: number;
   phone_number: string;

@@ -3,6 +3,7 @@ import {
   PendingSmsResponse,
   ConfirmResponse,
   InboundSmsResponse,
+  InboundHistoryResponse,
   StatsResponse,
 } from '../types';
 
@@ -101,6 +102,18 @@ export class GatewayApiClient {
 
   async getStats(): Promise<StatsResponse> {
     return this.request<StatsResponse>('/sms-gateway/stats');
+  }
+
+  async getInboundHistory(
+    limit: number = 50,
+    offset: number = 0,
+    stopOnly: boolean = false
+  ): Promise<InboundHistoryResponse> {
+    return this.request<InboundHistoryResponse>('/sms-gateway/inbound-history', {
+      limit,
+      offset,
+      stop_only: stopOnly,
+    });
   }
 
   async registerFcmToken(fcmToken: string): Promise<{ success: boolean }> {

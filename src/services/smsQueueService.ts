@@ -1,4 +1,5 @@
 import { AppState, AppStateStatus, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiClient } from '../api/gatewayClient';
 import { getSettings } from '../storage/settings';
 import DirectSms, { setSmsCheckSettings } from '../../modules/direct-sms';
@@ -14,6 +15,28 @@ let smsHistory: SmsHistoryItem[] = [];
 let historyListeners: ((history: SmsHistoryItem[]) => void)[] = [];
 
 const MAX_HISTORY = 200;
+const HISTORY_STORAGE_KEY = 'sms_send_history';
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function persistHistory(): void {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    AsyncStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(smsHistory)).catch(() => {});
+  }, 2000);
+}
+
+export async function loadHistory(): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(HISTORY_STORAGE_KEY);
+    if (raw) {
+      smsHistory = JSON.parse(raw);
+      for (const listener of historyListeners) {
+        listener(smsHistory);
+      }
+    }
+  } catch {}
+}
 
 function addToHistory(sms: PendingSms, status: 'sent' | 'error', errorMessage?: string): void {
   const item: SmsHistoryItem = {
@@ -29,6 +52,7 @@ function addToHistory(sms: PendingSms, status: 'sent' | 'error', errorMessage?: 
   for (const listener of historyListeners) {
     listener(smsHistory);
   }
+  persistHistory();
 }
 
 async function processSms(sms: PendingSms): Promise<void> {

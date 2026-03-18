@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getSettings, isConfigured, preloadStorage } from '../src/storage/settings';
 import { initializeApiClient } from '../src/api/gatewayClient';
 import { startHeartbeat, stopHeartbeat } from '../src/services/heartbeatService';
-import { startSmsQueue, stopSmsQueue, setRateLimit } from '../src/services/smsQueueService';
+import { startSmsQueue, stopSmsQueue, setRateLimit, loadHistory } from '../src/services/smsQueueService';
 import { startInboundSmsListener, stopInboundSmsListener } from '../src/services/inboundSmsService';
 import GatewayService from '../modules/gateway-service';
 
@@ -57,6 +57,7 @@ const AppLayout = () => {
   useEffect(() => {
     const loadStorage = async () => {
       await preloadStorage();
+      await loadHistory();
       await requestSmsPermissions();
       // Request battery optimization exemption early — needed for
       // reliable background SMS delivery even when screen is off.
