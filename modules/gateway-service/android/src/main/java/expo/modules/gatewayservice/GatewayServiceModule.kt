@@ -145,6 +145,24 @@ class GatewayServiceModule : Module() {
         }
 
         /**
+         * Reset the retroactive inbound check timestamp and trigger a rescan.
+         * This causes the service to re-read the SMS inbox (last 30 days)
+         * and send all messages to the server.
+         */
+        AsyncFunction("rescanInbox") {
+            val context = appContext.reactContext ?: return@AsyncFunction false
+            val prefs = context.getSharedPreferences(SmsGatewayService.PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().remove("last_stop_check_timestamp").apply()
+            if (SmsGatewayService.isRunning) {
+                val intent = Intent(context, SmsGatewayService::class.java).apply {
+                    action = SmsGatewayService.ACTION_RESCAN_INBOX
+                }
+                context.startService(intent)
+            }
+            return@AsyncFunction true
+        }
+
+        /**
          * Request battery optimization exemption.
          * Opens system dialog asking user to disable battery optimization for this app.
          */

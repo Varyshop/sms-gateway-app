@@ -311,6 +311,21 @@ export default function SettingsScreen() {
               placeholderTextColor="#6B7280"
             />
           </View>
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={async () => {
+              try {
+                await GatewayService.rescanInbox();
+                Alert.alert('Prohledavani', 'Prohledavani prichozich SMS z poslednich 30 dni bylo spusteno.');
+              } catch (e) {
+                Alert.alert('Chyba', 'Nepodarilo se spustit prohledavani.');
+              }
+            }}
+          >
+            <Ionicons name="refresh-outline" size={16} color="#3B82F6" />
+            <Text style={styles.secondaryButtonText}>Znovu prohledat prijate SMS</Text>
+          </TouchableOpacity>
         </View>
 
         {/* SMS Limit Section */}

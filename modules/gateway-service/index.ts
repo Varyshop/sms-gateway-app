@@ -35,6 +35,7 @@ interface GatewayServiceModule {
   ): Promise<boolean>;
   isBatteryOptimizationDisabled(): Promise<boolean>;
   requestBatteryOptimizationExemption(): Promise<boolean>;
+  rescanInbox(): Promise<boolean>;
   getFcmToken(): Promise<string | null>;
 }
 
@@ -150,6 +151,15 @@ export async function requestBatteryOptimizationExemption(): Promise<boolean> {
 }
 
 /**
+ * Reset the retroactive check timestamp and rescan the SMS inbox.
+ * Sends all messages from the last 30 days to the server.
+ */
+export async function rescanInbox(): Promise<boolean> {
+  if (!GatewayService) return false;
+  return GatewayService.rescanInbox();
+}
+
+/**
  * Get the current FCM token for this device.
  * Returns null if Firebase is not available.
  */
@@ -166,6 +176,7 @@ export default {
   updateConfig,
   isBatteryOptimizationDisabled,
   requestBatteryOptimizationExemption,
+  rescanInbox,
   getFcmToken,
   onStatusChange,
 };

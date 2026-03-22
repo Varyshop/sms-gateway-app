@@ -59,6 +59,7 @@ class SmsGatewayService : Service() {
         const val ACTION_SMS_DELIVERED = "expo.modules.gatewayservice.SMS_DELIVERED"
         const val ACTION_FCM_WAKE = "expo.modules.gatewayservice.FCM_WAKE"
         const val ACTION_REGISTER_FCM = "expo.modules.gatewayservice.REGISTER_FCM"
+        const val ACTION_RESCAN_INBOX = "expo.modules.gatewayservice.RESCAN_INBOX"
         const val ACTION_STATUS_CHANGED = "expo.modules.gatewayservice.STATUS_CHANGED"
         const val ACTION_ALARM_POLL = "expo.modules.gatewayservice.ALARM_POLL"
         const val ACTION_ALARM_HEARTBEAT = "expo.modules.gatewayservice.ALARM_HEARTBEAT"
@@ -277,6 +278,10 @@ class SmsGatewayService : Service() {
                 Log.d(TAG, "AlarmManager heartbeat trigger")
                 executor.execute { sendHeartbeat() }
                 scheduleNextHeartbeatAlarm()
+            }
+            ACTION_RESCAN_INBOX -> {
+                Log.i(TAG, "Manual inbox rescan requested")
+                executor.execute { retroactiveStopCheck() }
             }
             else -> startGateway()
         }
@@ -933,7 +938,7 @@ class SmsGatewayService : Service() {
 
             val lastCheckTimestamp = prefs.getLong("last_stop_check_timestamp", 0)
             val since = if (lastCheckTimestamp > 0) lastCheckTimestamp
-                        else System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
+                        else System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000L
 
             val allMessages = JSONArray()
             var cursor: Cursor? = null
