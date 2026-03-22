@@ -20,6 +20,7 @@ export default function InboundScreen() {
   const [messages, setMessages] = useState<InboundSmsItem[]>([]);
   const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<Filter>('all');
+  const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -40,7 +41,8 @@ export default function InboundScreen() {
   }, [filter]);
 
   useEffect(() => {
-    fetchMessages(0, false);
+    setInitialLoading(true);
+    fetchMessages(0, false).finally(() => setInitialLoading(false));
   }, [fetchMessages]);
 
   const onRefresh = useCallback(async () => {
@@ -115,23 +117,30 @@ export default function InboundScreen() {
         ))}
       </View>
 
-      <FlatList
-        data={messages}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderItem}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3B82F6" />
-        }
-        onEndReached={onEndReached}
-        onEndReachedThreshold={0.3}
-        ListFooterComponent={loadingMore ? <ActivityIndicator color="#3B82F6" style={{ padding: 16 }} /> : null}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="mail-open-outline" size={48} color="#6B7280" />
-            <Text style={styles.emptyText}>Zadne prichozi SMS</Text>
-          </View>
-        }
-      />
+      {initialLoading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+          <Text style={styles.emptyText}>Nacitam...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={messages}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderItem}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3B82F6" />
+          }
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={loadingMore ? <ActivityIndicator color="#3B82F6" style={{ padding: 16 }} /> : null}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Ionicons name="mail-open-outline" size={48} color="#6B7280" />
+              <Text style={styles.emptyText}>Zadne prichozi SMS</Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }

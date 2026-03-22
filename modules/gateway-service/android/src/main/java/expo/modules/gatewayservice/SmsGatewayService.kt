@@ -935,13 +935,13 @@ class SmsGatewayService : Service() {
             val since = if (lastCheckTimestamp > 0) lastCheckTimestamp
                         else System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
 
-            val stopMessages = JSONArray()
+            val allMessages = JSONArray()
             var cursor: Cursor? = null
             try {
                 cursor = contentResolver.query(
                     Uri.parse("content://sms/inbox"),
                     arrayOf("address", "body", "date"),
-                    "date > ? AND (body LIKE '%STOP%' OR body LIKE '%stop%' OR body LIKE '%Stop%')",
+                    "date > ?",
                     arrayOf(since.toString()),
                     "date ASC"
                 )
@@ -949,39 +949,38 @@ class SmsGatewayService : Service() {
                     while (cursor.moveToNext()) {
                         val address = cursor.getString(0) ?: continue
                         val body = cursor.getString(1) ?: continue
-                        if (body.uppercase().contains("STOP")) {
-                            stopMessages.put(JSONObject().apply {
-                                put("from_number", address)
-                                put("message", body)
-                                put("to_number", "")
-                            })
-                        }
+                        allMessages.put(JSONObject().apply {
+                            put("from_number", address)
+                            put("message", body)
+                            put("to_number", "")
+                        })
                     }
                 }
             } finally {
                 cursor?.close()
             }
 
-            if (stopMessages.length() == 0) {
-                Log.d(TAG, "Retroactive STOP check: no STOP messages found since $since")
+            if (allMessages.length() == 0) {
+                Log.d(TAG, "Retroactive inbound check: no messages found since $since")
             } else {
-                Log.i(TAG, "Retroactive STOP check: found ${stopMessages.length()} STOP messages, sending to server")
+                Log.i(TAG, "Retroactive inbound check: found ${allMessages.length()} messages, sending to server")
                 val body = JSONObject().apply {
-                    put("messages", stopMessages)
+                    put("messages", allMessages)
                 }
                 val response = httpPost("$url/sms-gateway/inbound-batch", key, body)
                 if (response != null) {
                     val blacklisted = response.optInt("blacklisted", 0)
                     val already = response.optInt("already_blacklisted", 0)
-                    Log.i(TAG, "Retroactive STOP check: blacklisted=$blacklisted, already=$already")
+                    val recorded = response.optInt("recorded", 0)
+                    Log.i(TAG, "Retroactive inbound check: recorded=$recorded, blacklisted=$blacklisted, already=$already")
                 }
             }
 
             prefs.edit().putLong("last_stop_check_timestamp", System.currentTimeMillis()).apply()
         } catch (e: SecurityException) {
-            Log.w(TAG, "Cannot read SMS inbox for STOP check (no permission): ${e.message}")
+            Log.w(TAG, "Cannot read SMS inbox for retroactive check (no permission): ${e.message}")
         } catch (e: Exception) {
-            Log.e(TAG, "Retroactive STOP check error", e)
+            Log.e(TAG, "Retroactive inbound check error", e)
         }
     }
 
