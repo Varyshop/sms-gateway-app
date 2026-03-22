@@ -8,6 +8,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isConfigured, getSettings, setServiceEnabled } from '../../src/storage/settings';
 import { getApiClient } from '../../src/api/gatewayClient';
 import { onHeartbeat, isHeartbeatActive, startHeartbeat, stopHeartbeat } from '../../src/services/heartbeatService';
@@ -34,6 +35,7 @@ function ProgressBar({ value, limit, color }: { value: number; limit: number; co
 }
 
 export default function DashboardScreen() {
+  const insets = useSafeAreaInsets();
   const [configured, setConfigured] = useState(false);
   const [serviceRunning, setServiceRunning] = useState(false);
   const [nativeServiceRunning, setNativeServiceRunning] = useState(false);
@@ -134,7 +136,7 @@ export default function DashboardScreen() {
 
   if (!configured) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
         <View style={styles.emptyState}>
           <Ionicons name="qr-code-outline" size={64} color="#6B7280" />
           <Text style={styles.emptyTitle}>Neni sparovano</Text>
@@ -154,7 +156,7 @@ export default function DashboardScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { paddingTop: insets.top + 8 }]}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#3B82F6" />
       }
@@ -302,7 +304,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#111827',
-    paddingTop: 48,
   },
   header: {
     flexDirection: 'row',

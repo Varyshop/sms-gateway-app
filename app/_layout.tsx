@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { View, StatusBar, ActivityIndicator, Platform, PermissionsAndroid } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef, useState } from 'react';
 import { getSettings, isConfigured, preloadStorage } from '../src/storage/settings';
@@ -120,19 +121,21 @@ const AppLayout = () => {
   }
 
   return (
-    <View style={{ flex: 1 }}>
-      <StatusBar backgroundColor="#111827" barStyle="light-content" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen
-          name="qr-scanner"
-          options={{
-            presentation: 'fullScreenModal',
-            animation: 'slide_from_bottom',
-          }}
-        />
-      </Stack>
-    </View>
+    <SafeAreaProvider>
+      <View style={{ flex: 1, backgroundColor: '#111827' }}>
+        <StatusBar backgroundColor="#111827" barStyle="light-content" />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen
+            name="qr-scanner"
+            options={{
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+            }}
+          />
+        </Stack>
+      </View>
+    </SafeAreaProvider>
   );
 };
 

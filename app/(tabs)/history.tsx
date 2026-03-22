@@ -7,12 +7,14 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSmsHistory, onHistoryChange } from '../../src/services/smsQueueService';
 import { SmsHistoryItem } from '../../src/types';
 
 type Filter = 'all' | 'sent' | 'error';
 
 export default function HistoryScreen() {
+  const insets = useSafeAreaInsets();
   const [history, setHistory] = useState<SmsHistoryItem[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
 
@@ -57,7 +59,7 @@ export default function HistoryScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Historie SMS</Text>
         <Text style={styles.count}>{filteredHistory.length} zaznam(u)</Text>
@@ -97,7 +99,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#111827',
-    paddingTop: 48,
   },
   header: {
     flexDirection: 'row',

@@ -46,7 +46,7 @@ class InboundSmsWorker(appContext: Context, workerParams: WorkerParameters) : Wo
             val connection = URL("$apiUrl/sms-gateway/inbound").openConnection() as HttpURLConnection
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("Authorization", "Bearer $apiKey")
+            connection.setRequestProperty("X-API-Key", apiKey)
             connection.connectTimeout = 15000
             connection.readTimeout = 15000
             connection.doOutput = true

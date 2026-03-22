@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getApiClient } from '../../src/api/gatewayClient';
 import { InboundSmsItem } from '../../src/types';
 
@@ -17,6 +18,7 @@ type Filter = 'all' | 'stop';
 const PAGE_SIZE = 50;
 
 export default function InboundScreen() {
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<InboundSmsItem[]>([]);
   const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<Filter>('all');
@@ -97,7 +99,7 @@ export default function InboundScreen() {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Prichozi SMS</Text>
         <Text style={styles.count}>{total} celkem</Text>
@@ -149,7 +151,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#111827',
-    paddingTop: 48,
   },
   header: {
     flexDirection: 'row',

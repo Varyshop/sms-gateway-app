@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   getSettings,
   setServiceEnabled,
@@ -45,6 +46,7 @@ import SimManager, {
 import DirectSms from "../../modules/direct-sms";
 
 export default function SettingsScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [settings, setSettingsState] = useState(getSettings());
   const [simCards, setSimCards] = useState<SimCardInfo[]>([]);
@@ -208,8 +210,8 @@ export default function SettingsScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        style={[styles.container, { paddingTop: insets.top + 8 }]}
+        contentContainerStyle={[styles.contentContainer, { paddingBottom: insets.bottom + 40 }]}
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.title}>Nastaveni</Text>
@@ -372,7 +374,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#111827",
-    paddingTop: 48,
   },
   contentContainer: {
     paddingBottom: 40,
