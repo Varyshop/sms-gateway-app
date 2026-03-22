@@ -12,6 +12,7 @@ import {
   Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
+import Constants from "expo-constants";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -380,6 +381,19 @@ export default function SettingsScreen() {
               {smsCheckStatus}
             </Text>
           )}
+        </View>
+
+        {/* App Version */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>O aplikaci</Text>
+          <View style={styles.row}>
+            <Text style={styles.label}>Verze</Text>
+            <Text style={styles.value}>{Constants.expoConfig?.version ?? '—'}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Build</Text>
+            <Text style={styles.value}>{Constants.expoConfig?.android?.versionCode ?? Constants.expoConfig?.extra?.eas?.projectId?.slice(0, 8) ?? '—'}</Text>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
