@@ -8,11 +8,13 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getApiClient } from '../../src/api/gatewayClient';
 import { getSmsHistory, onHistoryChange } from '../../src/services/smsQueueService';
+import GatewayService from '../../modules/gateway-service';
 import { InboundSmsItem, SmsHistoryItem } from '../../src/types';
 
 // ---- Types ----
@@ -35,6 +37,8 @@ const PAGE_SIZE = 50;
 export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
   const [direction, setDirection] = useState<Direction>('outbound');
+
+  const [search, setSearch] = useState('');
 
   // Outbound state (local in-memory history)
   const [outHistory, setOutHistory] = useState<SmsHistoryItem[]>([]);
@@ -59,9 +63,14 @@ export default function MessagesScreen() {
     return unsubscribe;
   }, []);
 
-  const filteredOut = outFilter === 'all'
-    ? outHistory
-    : outHistory.filter((item) => item.status === outFilter);
+  const filteredOut = outHistory.filter((item) => {
+    if (outFilter !== 'all' && item.status !== outFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return item.phone_number.toLowerCase().includes(q) || item.message.toLowerCase().includes(q);
+    }
+    return true;
+  });
 
   // ---- Inbound ----
 
@@ -69,7 +78,7 @@ export default function MessagesScreen() {
     const client = getApiClient();
     if (!client) return;
     try {
-      const res = await client.getInboundHistory(PAGE_SIZE, offset, inFilter);
+      const res = await client.getInboundHistory(PAGE_SIZE, offset, inFilter, search || undefined);
       if (res.success) {
         setInMessages((prev) => append ? [...prev, ...res.messages] : res.messages);
         setInTotal(res.total);
@@ -78,7 +87,7 @@ export default function MessagesScreen() {
     } catch (e) {
       console.error('[Inbound] Fetch error:', e);
     }
-  }, [inFilter]);
+  }, [inFilter, search]);
 
   useEffect(() => {
     if (direction === 'inbound') {
@@ -255,6 +264,21 @@ export default function MessagesScreen() {
     );
   };
 
+  const [rescanning, setRescanning] = useState(false);
+
+  const rescanInbox = async () => {
+    setRescanning(true);
+    try {
+      await GatewayService.rescanInbox();
+      await fetchInbound(0, false);
+      Alert.alert('Hotovo', 'Prijate SMS byly znovu prohledany');
+    } catch {
+      Alert.alert('Chyba', 'Nepodarilo se prohledat SMS inbox');
+    } finally {
+      setRescanning(false);
+    }
+  };
+
   const hasUnblacklisted = inMessages.some((m) => m.is_stop && !m.blacklisted);
 
   // ---- Main render ----
@@ -267,6 +291,35 @@ export default function MessagesScreen() {
         <Text style={styles.count}>
           {direction === 'outbound' ? `${filteredOut.length} zaznam(u)` : `${inTotal} celkem`}
         </Text>
+      </View>
+
+      {/* Search */}
+      <View style={styles.searchRow}>
+        <View style={styles.searchInput}>
+          <Ionicons name="search" size={16} color="#6B7280" />
+          <TextInput
+            style={styles.searchText}
+            placeholder="Hledat cislo nebo text..."
+            placeholderTextColor="#6B7280"
+            value={search}
+            onChangeText={setSearch}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={18} color="#6B7280" />
+            </TouchableOpacity>
+          )}
+        </View>
+        {direction === 'inbound' && (
+          <TouchableOpacity onPress={rescanInbox} style={styles.rescanBtn} disabled={rescanning}>
+            {rescanning
+              ? <ActivityIndicator size="small" color="#3B82F6" />
+              : <Ionicons name="refresh" size={20} color="#3B82F6" />
+            }
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Direction toggle */}
@@ -404,6 +457,20 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 24, fontWeight: 'bold', color: '#F9FAFB' },
   count: { color: '#6B7280', fontSize: 14 },
+
+  // Search
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8, gap: 8,
+  },
+  searchInput: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#1F2937', borderRadius: 8, paddingHorizontal: 12, height: 40,
+  },
+  searchText: { flex: 1, color: '#F9FAFB', fontSize: 14 },
+  rescanBtn: {
+    width: 40, height: 40, borderRadius: 8, backgroundColor: '#1F2937',
+    alignItems: 'center', justifyContent: 'center',
+  },
 
   // Direction toggle (Odeslane / Prijate)
   directionRow: {
