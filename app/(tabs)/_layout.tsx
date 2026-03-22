@@ -24,20 +24,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="inbound"
+        name="messages"
         options={{
-          title: 'Prichozi',
+          title: 'Zpravy',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="mail-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="history"
-        options={{
-          title: 'Historie',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="time-outline" size={size} color={color} />
+            <Ionicons name="chatbubbles-outline" size={size} color={color} />
           ),
         }}
       />
@@ -50,6 +41,9 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* Hide old screens from tab bar */}
+      <Tabs.Screen name="history" options={{ href: null }} />
+      <Tabs.Screen name="inbound" options={{ href: null }} />
     </Tabs>
   );
 }

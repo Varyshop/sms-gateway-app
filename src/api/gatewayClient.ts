@@ -107,12 +107,19 @@ export class GatewayApiClient {
   async getInboundHistory(
     limit: number = 50,
     offset: number = 0,
-    stopOnly: boolean = false
+    filter: 'all' | 'stop' | 'stop_not_blacklisted' = 'all'
   ): Promise<InboundHistoryResponse> {
     return this.request<InboundHistoryResponse>('/sms-gateway/inbound-history', {
       limit,
       offset,
-      stop_only: stopOnly,
+      stop_only: filter === 'stop',
+      stop_not_blacklisted: filter === 'stop_not_blacklisted',
+    });
+  }
+
+  async blacklistInbound(ids: number[]): Promise<{ success: boolean; blacklisted: number }> {
+    return this.request<{ success: boolean; blacklisted: number }>('/sms-gateway/inbound-blacklist', {
+      ids,
     });
   }
 

@@ -34,11 +34,12 @@
   "scripts": {
     "android": "expo run:android --port 8085",
     "build-apk": "cd android && ./gradlew assembleRelease 2>&1",
+    "copy-apk": "cp android/app/build/outputs/apk/release/app-release.apk ./app-release.apk",
+    "install-apk": "adb install ./android/app/build/outputs/apk/release/app-release.apk",
     "build:android": "EAS_NO_VCS=1 eas build --platform android",
     "dev": "expo start --port 8085 -c",
     "eas:build:apk": "EAS_NO_VCS=1 eas build --platform android --profile production-apk",
     "eas:build:app-bundle": "EAS_NO_VCS=1 eas build --platform android --profile production",
-    "install-apk": "adb install ./android/app/build/outputs/apk/release/app-release.apk",
     "ios": "expo run:ios",
     "grant-permission": "adb shell pm grant com.varyshop.smsgatewayapp android.permission.WRITE_SECURE_SETTINGS",
     "prebuild": "expo prebuild --platform android"
