@@ -17,6 +17,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#111827"
       },
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.SEND_SMS",
         "android.permission.RECEIVE_SMS",
