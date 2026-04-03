@@ -37,6 +37,7 @@ export default function CampaignsScreen() {
   const [selectedFilter, setSelectedFilter] = useState<CampaignFilter | null>(null);
   const [limit, setLimit] = useState('100');
   const [previewText, setPreviewText] = useState('');
+  const [editedBody, setEditedBody] = useState('');
   const [previewCount, setPreviewCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
@@ -132,6 +133,7 @@ export default function CampaignsScreen() {
       );
       if (res.success) {
         setPreviewText(res.preview_text);
+        setEditedBody(res.preview_text);
         setPreviewCount(res.recipient_count);
         setScreen('step3');
       }
@@ -147,9 +149,10 @@ export default function CampaignsScreen() {
     const client = getApiClient();
     if (!client) return;
 
+    const bodyChanged = editedBody.trim() !== previewText.trim();
     Alert.alert(
       'Odeslat kampan',
-      `Odeslat SMS "${selectedTemplate.name}" ${previewCount} prijemcum?`,
+      `Odeslat SMS "${selectedTemplate.name}" ${previewCount} prijemcum?${bodyChanged ? '\n\n(Text SMS byl upraven)' : ''}`,
       [
         { text: 'Zrusit', style: 'cancel' },
         {
@@ -161,6 +164,7 @@ export default function CampaignsScreen() {
                 selectedTemplate.id,
                 selectedFilter.id,
                 parseInt(limit, 10) || 100,
+                bodyChanged ? editedBody.trim() : undefined,
               );
               if (res.success) {
                 const campaign: CampaignSummary = {
@@ -272,6 +276,11 @@ export default function CampaignsScreen() {
                   <Text style={styles.metaText}>
                     {item.segments.length} segment(u)
                   </Text>
+                  {item.exclude_contacted_days > 0 && (
+                    <Text style={styles.metaExclude}>
+                      Vynechava kontaktovane za {item.exclude_contacted_days}d
+                    </Text>
+                  )}
                 </View>
               </TouchableOpacity>
             )}
@@ -288,6 +297,11 @@ export default function CampaignsScreen() {
         {loading ? <Loader /> : (
           <>
             <Text style={styles.sectionLabel}>Segment zakazniku</Text>
+            {selectedTemplate && selectedTemplate.exclude_contacted_days > 0 && (
+              <Text style={styles.excludeInfo}>
+                Vynechava kontakty, kterym byla odeslana SMS za poslednich {selectedTemplate.exclude_contacted_days} dni
+              </Text>
+            )}
             <FlatList
               data={filters}
               keyExtractor={(item) => String(item.id)}
@@ -351,10 +365,15 @@ export default function CampaignsScreen() {
           <Text style={styles.summaryValue}>{selectedFilter?.name}</Text>
           <Text style={styles.summaryLabel}>Pocet prijemcu:</Text>
           <Text style={styles.summaryValue}>{previewCount}</Text>
-          <Text style={styles.summaryLabel}>Nahled SMS:</Text>
-          <View style={styles.previewBox}>
-            <Text style={styles.previewText}>{previewText}</Text>
-          </View>
+          <Text style={styles.summaryLabel}>Text SMS (lze upravit):</Text>
+          <TextInput
+            style={styles.previewInput}
+            value={editedBody}
+            onChangeText={setEditedBody}
+            multiline
+            textAlignVertical="top"
+            placeholderTextColor="#6B7280"
+          />
         </View>
         <View style={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16 }}>
           <TouchableOpacity
@@ -538,6 +557,10 @@ const styles = StyleSheet.create({
   cardBody: { color: '#9CA3AF', fontSize: 13, marginBottom: 6 },
   cardMeta: { flexDirection: 'row', gap: 16 },
   metaText: { color: '#6B7280', fontSize: 12 },
+  metaExclude: { color: '#FBBF24', fontSize: 11 },
+  excludeInfo: {
+    color: '#FBBF24', fontSize: 12, paddingHorizontal: 16, marginBottom: 8,
+  },
   cardStats: { flexDirection: 'row', gap: 16, marginTop: 4 },
   cardStat: { color: '#9CA3AF', fontSize: 13 },
   cardDate: { color: '#6B7280', fontSize: 11, marginTop: 4 },
@@ -602,6 +625,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#374151', padding: 12, borderRadius: 8, marginTop: 6,
   },
   previewText: { color: '#D1D5DB', fontSize: 14, lineHeight: 20 },
+  previewInput: {
+    backgroundColor: '#374151', color: '#D1D5DB', fontSize: 14, lineHeight: 20,
+    padding: 12, borderRadius: 8, marginTop: 6, minHeight: 100,
+    borderWidth: 1, borderColor: '#4B5563',
+  },
 
   // Status
   statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },

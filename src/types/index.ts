@@ -105,6 +105,7 @@ export interface CampaignTemplate {
   segments: CampaignSegment[];
   default_limit: number;
   max_limit: number;
+  exclude_contacted_days: number;
 }
 
 export interface CampaignFilter {
