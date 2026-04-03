@@ -193,17 +193,26 @@ export default function CampaignsScreen() {
                 try {
                   const activeSims = await SimManager.getActiveSimCards();
                   setSims(activeSims);
-                  if (activeSims.length === 1 && activeSims[0].phoneNumber) {
+                  const simsWithNumber = activeSims.filter((s) => s.phoneNumber);
+                  if (simsWithNumber.length === 1) {
                     // Auto-assign single SIM and trigger send
                     await client.assignSimToCampaign(
-                      res.campaign_id, 'single', activeSims[0].phoneNumber,
+                      res.campaign_id, 'single', simsWithNumber[0].phoneNumber!,
                     );
+                    setSimAssigned(true);
+                    triggerImmediatePoll();
+                  } else if (simsWithNumber.length === 0) {
+                    // No SIM numbers detected — still allow sending
+                    // (native service will use default SIM)
                     setSimAssigned(true);
                     triggerImmediatePoll();
                   }
                   // If 2+ SIMs: user picks on status screen
                 } catch (simErr) {
                   console.warn('[Campaigns] SIM detection failed:', simErr);
+                  // Fallback: allow send anyway
+                  setSimAssigned(true);
+                  triggerImmediatePoll();
                 }
               }
             } catch (e) {
@@ -454,9 +463,29 @@ export default function CampaignsScreen() {
     }
   };
 
-  const handleSendNow = () => {
-    triggerImmediatePoll();
-    Alert.alert('Odeslani', 'Odesilani bylo spusteno.');
+  const handleSendNow = async () => {
+    if (!statusCampaign) return;
+    const client = getApiClient();
+    if (!client) return;
+
+    setSimAssigning(true);
+    try {
+      // Ensure all SMS are assigned to phone + SIM before polling
+      const simsWithNumber = sims.filter((s) => s.phoneNumber);
+      if (simsWithNumber.length === 1) {
+        await client.assignSimToCampaign(
+          statusCampaign.id, 'single', simsWithNumber[0].phoneNumber!,
+        );
+      }
+      // If no SIMs detected, still trigger poll — SMS may already be assigned
+      triggerImmediatePoll();
+    } catch (e) {
+      console.warn('[Campaigns] Send now assign failed:', e);
+      // Still try to poll even if assign fails
+      triggerImmediatePoll();
+    } finally {
+      setSimAssigning(false);
+    }
   };
 
   if (screen === 'status' && statusCampaign) {
@@ -537,9 +566,19 @@ export default function CampaignsScreen() {
         <View style={{ paddingHorizontal: 16 }}>
           {/* Send now button — visible when SIM is assigned and there are pending SMS */}
           {hasPending && simAssigned && (
-            <TouchableOpacity style={styles.sendNowBtn} onPress={handleSendNow}>
-              <Ionicons name="flash-outline" size={20} color="#FFF" />
-              <Text style={styles.sendNowBtnText}>Odeslat ihned</Text>
+            <TouchableOpacity
+              style={[styles.sendNowBtn, simAssigning && styles.btnDisabled]}
+              onPress={handleSendNow}
+              disabled={simAssigning}
+            >
+              {simAssigning ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="flash-outline" size={20} color="#FFF" />
+                  <Text style={styles.sendNowBtnText}>Odeslat ihned</Text>
+                </>
+              )}
             </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.secondaryBtn} onPress={goBack}>
