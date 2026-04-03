@@ -151,81 +151,93 @@ export default function CampaignsScreen() {
     }
   };
 
-  const createCampaign = async () => {
+  const doCreateCampaign = async (sendNow: boolean) => {
     if (!selectedTemplate || !selectedFilter) return;
     const client = getApiClient();
     if (!client) return;
 
+    setLoading(true);
+    try {
+      const bodyChanged = editedBody.trim() !== previewText.trim();
+      const res = await client.createCampaign(
+        selectedTemplate.id,
+        selectedFilter.id,
+        parseInt(limit, 10) || 100,
+        bodyChanged ? editedBody.trim() : undefined,
+        sendNow,
+      );
+      if (res.success) {
+        const campaign: CampaignSummary = {
+          id: res.campaign_id,
+          name: selectedTemplate.name,
+          state: res.state || (sendNow ? 'sending' : 'in_queue'),
+          date_created: new Date().toISOString(),
+          total: res.recipient_count,
+          sent: 0,
+          pending: res.recipient_count,
+          error: 0,
+          clicked: 0,
+          total_clicks: 0,
+          order_count: 0,
+          revenue: 0,
+          optout: 0,
+        };
+        setStatusCampaign(campaign);
+        setSimAssigned(false);
+        setScreen('status');
+        startStatusPolling(res.campaign_id);
+
+        if (sendNow) {
+          // Detect SIMs and assign + trigger send
+          try {
+            const activeSims = await SimManager.getActiveSimCards();
+            setSims(activeSims);
+            const simsWithNumber = activeSims.filter((s) => s.phoneNumber);
+            if (simsWithNumber.length === 1) {
+              await client.assignSimToCampaign(
+                res.campaign_id, 'single', simsWithNumber[0].phoneNumber!,
+              );
+              setSimAssigned(true);
+              triggerImmediatePoll();
+            } else if (simsWithNumber.length === 0) {
+              setSimAssigned(true);
+              triggerImmediatePoll();
+            }
+            // If 2+ SIMs: user picks on status screen
+          } catch (simErr) {
+            console.warn('[Campaigns] SIM detection failed:', simErr);
+            setSimAssigned(true);
+            triggerImmediatePoll();
+          }
+        } else {
+          // Queue only — don't assign or poll
+          setSims([]);
+          setSimAssigned(true); // hide SIM picker, show status only
+        }
+      }
+    } catch (e) {
+      Alert.alert('Chyba', 'Nepodarilo se vytvorit kampan.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createCampaign = () => {
+    if (!selectedTemplate || !selectedFilter) return;
     const bodyChanged = editedBody.trim() !== previewText.trim();
     Alert.alert(
-      'Odeslat kampan',
-      `Odeslat SMS "${selectedTemplate.name}" ${previewCount} prijemcum?${bodyChanged ? '\n\n(Text SMS byl upraven)' : ''}`,
+      'Vytvorit kampan',
+      `SMS "${selectedTemplate.name}" pro ${previewCount} prijemcu${bodyChanged ? '\n\n(Text SMS byl upraven)' : ''}`,
       [
         { text: 'Zrusit', style: 'cancel' },
         {
-          text: 'Odeslat',
-          onPress: async () => {
-            setLoading(true);
-            try {
-              const res = await client.createCampaign(
-                selectedTemplate.id,
-                selectedFilter.id,
-                parseInt(limit, 10) || 100,
-                bodyChanged ? editedBody.trim() : undefined,
-              );
-              if (res.success) {
-                const campaign: CampaignSummary = {
-                  id: res.campaign_id,
-                  name: selectedTemplate.name,
-                  state: 'sending',
-                  date_created: new Date().toISOString(),
-                  total: res.recipient_count,
-                  sent: 0,
-                  pending: res.recipient_count,
-                  error: 0,
-                  clicked: 0,
-                  total_clicks: 0,
-                  order_count: 0,
-                  revenue: 0,
-                  optout: 0,
-                };
-                setStatusCampaign(campaign);
-                setSimAssigned(false);
-                setScreen('status');
-                startStatusPolling(res.campaign_id);
-
-                // Detect SIMs and auto-assign if single SIM
-                try {
-                  const activeSims = await SimManager.getActiveSimCards();
-                  setSims(activeSims);
-                  const simsWithNumber = activeSims.filter((s) => s.phoneNumber);
-                  if (simsWithNumber.length === 1) {
-                    // Auto-assign single SIM and trigger send
-                    await client.assignSimToCampaign(
-                      res.campaign_id, 'single', simsWithNumber[0].phoneNumber!,
-                    );
-                    setSimAssigned(true);
-                    triggerImmediatePoll();
-                  } else if (simsWithNumber.length === 0) {
-                    // No SIM numbers detected — still allow sending
-                    // (native service will use default SIM)
-                    setSimAssigned(true);
-                    triggerImmediatePoll();
-                  }
-                  // If 2+ SIMs: user picks on status screen
-                } catch (simErr) {
-                  console.warn('[Campaigns] SIM detection failed:', simErr);
-                  // Fallback: allow send anyway
-                  setSimAssigned(true);
-                  triggerImmediatePoll();
-                }
-              }
-            } catch (e) {
-              Alert.alert('Chyba', 'Nepodarilo se vytvorit kampan.');
-            } finally {
-              setLoading(false);
-            }
-          },
+          text: 'Do fronty',
+          style: 'default',
+          onPress: () => doCreateCampaign(false),
+        },
+        {
+          text: 'Odeslat ihned',
+          onPress: () => doCreateCampaign(true),
         },
       ],
     );
@@ -441,8 +453,8 @@ export default function CampaignsScreen() {
               <ActivityIndicator color="#FFF" />
             ) : (
               <>
-                <Ionicons name="send-outline" size={20} color="#FFF" />
-                <Text style={styles.sendBtnText}>Odeslat {previewCount} SMS</Text>
+                <Ionicons name="megaphone-outline" size={20} color="#FFF" />
+                <Text style={styles.sendBtnText}>Vytvorit kampan ({previewCount} SMS)</Text>
               </>
             )}
           </TouchableOpacity>
@@ -480,18 +492,20 @@ export default function CampaignsScreen() {
 
     setSimAssigning(true);
     try {
-      // Ensure all SMS are assigned to phone + SIM before polling
+      // Always call assign-sim — it assigns phone, SIM (if available),
+      // and unpauses the mailing if it was queued
       const simsWithNumber = sims.filter((s) => s.phoneNumber);
       if (simsWithNumber.length === 1) {
         await client.assignSimToCampaign(
           statusCampaign.id, 'single', simsWithNumber[0].phoneNumber!,
         );
+      } else {
+        // No SIM detected — still call to assign phone + unpause
+        await client.assignSimToCampaign(statusCampaign.id, 'single');
       }
-      // If no SIMs detected, still trigger poll — SMS may already be assigned
       triggerImmediatePoll();
     } catch (e) {
       console.warn('[Campaigns] Send now assign failed:', e);
-      // Still try to poll even if assign fails
       triggerImmediatePoll();
     } finally {
       setSimAssigning(false);

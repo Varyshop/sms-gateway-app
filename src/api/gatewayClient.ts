@@ -171,11 +171,13 @@ export class GatewayApiClient {
     segmentId: number,
     limit: number,
     customBody?: string,
+    sendNow: boolean = true,
   ): Promise<CampaignCreateResponse> {
     return this.request<CampaignCreateResponse>('/sms-gateway/campaign/create', {
       template_id: templateId,
       segment_id: segmentId,
       limit,
+      send_now: sendNow,
       ...(customBody ? { custom_body: customBody } : {}),
     });
   }
