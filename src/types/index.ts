@@ -133,6 +133,11 @@ export interface CampaignSummary {
   sent: number;
   pending: number;
   error: number;
+  clicked: number;
+  total_clicks: number;
+  order_count: number;
+  revenue: number;
+  optout: number;
 }
 
 export interface CampaignListResponse {
@@ -161,5 +166,10 @@ export interface CampaignStatusResponse {
   sent: number;
   pending: number;
   error: number;
+  clicked: number;
+  total_clicks: number;
+  order_count: number;
+  revenue: number;
+  optout: number;
   created_at: string;
 }

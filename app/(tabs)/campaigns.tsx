@@ -183,6 +183,11 @@ export default function CampaignsScreen() {
                   sent: 0,
                   pending: res.recipient_count,
                   error: 0,
+                  clicked: 0,
+                  total_clicks: 0,
+                  order_count: 0,
+                  revenue: 0,
+                  optout: 0,
                 };
                 setStatusCampaign(campaign);
                 setSimAssigned(false);
@@ -243,6 +248,11 @@ export default function CampaignsScreen() {
             sent: res.sent,
             pending: res.pending,
             error: res.error,
+            clicked: res.clicked || 0,
+            total_clicks: res.total_clicks || 0,
+            order_count: res.order_count || 0,
+            revenue: res.revenue || 0,
+            optout: res.optout || 0,
           });
           if (res.state === 'done' || res.pending === 0) {
             if (statusPollRef.current) clearInterval(statusPollRef.current);
@@ -516,6 +526,48 @@ export default function CampaignsScreen() {
             <StatBox label="Chyba" value={statusCampaign.error} color="#F87171" />
           </View>
         </View>
+
+        {/* Marketing stats — clicks, orders, revenue, optout */}
+        {(statusCampaign.clicked > 0 || statusCampaign.order_count > 0 || statusCampaign.optout > 0) && (
+          <View style={styles.summaryCard}>
+            <Text style={styles.marketingTitle}>Vysledky kampane</Text>
+            <View style={styles.divider} />
+            <View style={styles.statsGrid}>
+              <StatBox label="Kliknulo" value={statusCampaign.clicked} color="#60A5FA" />
+              <StatBox label="Kliknuti" value={statusCampaign.total_clicks} color="#93C5FD" />
+              <StatBox label="Objednavky" value={statusCampaign.order_count} color="#A78BFA" />
+              <StatBox label="Odhlaseno" value={statusCampaign.optout} color="#F87171" />
+            </View>
+            {statusCampaign.revenue > 0 && (
+              <View style={styles.revenueRow}>
+                <Text style={styles.revenueLabel}>Prijem z kampane</Text>
+                <Text style={styles.revenueValue}>
+                  {statusCampaign.revenue.toLocaleString('cs-CZ', {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  })} Kc
+                </Text>
+              </View>
+            )}
+            {statusCampaign.sent > 0 && (
+              <View style={styles.ratioRow}>
+                <Text style={styles.ratioText}>
+                  CTR: {((statusCampaign.clicked / statusCampaign.sent) * 100).toFixed(1)}%
+                </Text>
+                {statusCampaign.order_count > 0 && (
+                  <Text style={styles.ratioText}>
+                    Konverze: {((statusCampaign.order_count / statusCampaign.sent) * 100).toFixed(1)}%
+                  </Text>
+                )}
+                {statusCampaign.optout > 0 && (
+                  <Text style={[styles.ratioText, { color: '#F87171' }]}>
+                    Odhlaseni: {((statusCampaign.optout / statusCampaign.sent) * 100).toFixed(1)}%
+                  </Text>
+                )}
+              </View>
+            )}
+          </View>
+        )}
 
         {/* SIM selection for dual-SIM devices */}
         {showSimPicker && (
@@ -830,6 +882,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#7C3AED',
   },
   simBtnText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+
+  // Marketing stats
+  marketingTitle: { color: '#F9FAFB', fontSize: 16, fontWeight: '600' },
+  revenueRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#374151',
+  },
+  revenueLabel: { color: '#9CA3AF', fontSize: 14 },
+  revenueValue: { color: '#34D399', fontSize: 20, fontWeight: 'bold' },
+  ratioRow: {
+    flexDirection: 'row', gap: 16, marginTop: 10,
+  },
+  ratioText: { color: '#9CA3AF', fontSize: 12 },
 
   // Empty state
   emptyState: {
