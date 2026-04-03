@@ -13,6 +13,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getApiClient } from '../../src/api/gatewayClient';
+import SimManager, { SimCardInfo, getSimDisplayString } from '../../modules/sim-manager';
+import { triggerImmediatePoll } from '../../src/services/smsQueueService';
 import {
   CampaignTemplate,
   CampaignFilter,
@@ -44,6 +46,11 @@ export default function CampaignsScreen() {
   // Status state
   const [statusCampaign, setStatusCampaign] = useState<CampaignSummary | null>(null);
   const statusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // SIM state
+  const [sims, setSims] = useState<SimCardInfo[]>([]);
+  const [simAssigned, setSimAssigned] = useState(false);
+  const [simAssigning, setSimAssigning] = useState(false);
 
   const fetchCampaigns = useCallback(async () => {
     const client = getApiClient();
@@ -178,8 +185,26 @@ export default function CampaignsScreen() {
                   error: 0,
                 };
                 setStatusCampaign(campaign);
+                setSimAssigned(false);
                 setScreen('status');
                 startStatusPolling(res.campaign_id);
+
+                // Detect SIMs and auto-assign if single SIM
+                try {
+                  const activeSims = await SimManager.getActiveSimCards();
+                  setSims(activeSims);
+                  if (activeSims.length === 1 && activeSims[0].phoneNumber) {
+                    // Auto-assign single SIM and trigger send
+                    await client.assignSimToCampaign(
+                      res.campaign_id, 'single', activeSims[0].phoneNumber,
+                    );
+                    setSimAssigned(true);
+                    triggerImmediatePoll();
+                  }
+                  // If 2+ SIMs: user picks on status screen
+                } catch (simErr) {
+                  console.warn('[Campaigns] SIM detection failed:', simErr);
+                }
               }
             } catch (e) {
               Alert.alert('Chyba', 'Nepodarilo se vytvorit kampan.');
@@ -220,11 +245,23 @@ export default function CampaignsScreen() {
     }, 5000);
   };
 
-  const viewCampaignStatus = (campaign: CampaignSummary) => {
+  const viewCampaignStatus = async (campaign: CampaignSummary) => {
     setStatusCampaign(campaign);
     setScreen('status');
     if (campaign.pending > 0 && campaign.state !== 'done') {
       startStatusPolling(campaign.id);
+      // Detect SIMs for pending campaigns
+      try {
+        const activeSims = await SimManager.getActiveSimCards();
+        setSims(activeSims);
+        // For existing campaigns, if single SIM, treat as already assigned
+        // (SMS are phone-assigned, just need to trigger poll)
+        setSimAssigned(activeSims.length <= 1);
+      } catch {
+        setSimAssigned(true); // Can't detect SIMs, show send button anyway
+      }
+    } else {
+      setSimAssigned(true);
     }
   };
 
@@ -395,10 +432,39 @@ export default function CampaignsScreen() {
     );
   }
 
+  const assignSimAndSend = async (
+    mode: 'single' | 'split',
+    simNumber?: string,
+    simNumbers?: string[],
+  ) => {
+    if (!statusCampaign) return;
+    const client = getApiClient();
+    if (!client) return;
+    setSimAssigning(true);
+    try {
+      await client.assignSimToCampaign(
+        statusCampaign.id, mode, simNumber, simNumbers,
+      );
+      setSimAssigned(true);
+      triggerImmediatePoll();
+    } catch (e) {
+      Alert.alert('Chyba', 'Nepodarilo se priradit SIM.');
+    } finally {
+      setSimAssigning(false);
+    }
+  };
+
+  const handleSendNow = () => {
+    triggerImmediatePoll();
+    Alert.alert('Odeslani', 'Odesilani bylo spusteno.');
+  };
+
   if (screen === 'status' && statusCampaign) {
     const progress = statusCampaign.total > 0
       ? statusCampaign.sent / statusCampaign.total
       : 0;
+    const hasPending = statusCampaign.pending > 0;
+    const showSimPicker = hasPending && !simAssigned && sims.length >= 2;
 
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
@@ -421,7 +487,61 @@ export default function CampaignsScreen() {
             <StatBox label="Chyba" value={statusCampaign.error} color="#F87171" />
           </View>
         </View>
+
+        {/* SIM selection for dual-SIM devices */}
+        {showSimPicker && (
+          <View style={styles.simPickerCard}>
+            <Text style={styles.simPickerTitle}>Vyberte SIM pro odeslani</Text>
+            {sims.map((sim) => (
+              <TouchableOpacity
+                key={sim.subscriptionId}
+                style={styles.simBtn}
+                disabled={simAssigning}
+                onPress={() => assignSimAndSend('single', sim.phoneNumber || undefined)}
+              >
+                {simAssigning ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="phone-portrait-outline" size={18} color="#FFF" />
+                    <Text style={styles.simBtnText}>{getSimDisplayString(sim)}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ))}
+            {sims.length >= 2 && sims.every((s) => s.phoneNumber) && (
+              <TouchableOpacity
+                style={[styles.simBtn, styles.simSplitBtn]}
+                disabled={simAssigning}
+                onPress={() =>
+                  assignSimAndSend(
+                    'split',
+                    undefined,
+                    sims.map((s) => s.phoneNumber!),
+                  )
+                }
+              >
+                {simAssigning ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="git-branch-outline" size={18} color="#FFF" />
+                    <Text style={styles.simBtnText}>Rozdelit mezi obe SIM</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         <View style={{ paddingHorizontal: 16 }}>
+          {/* Send now button — visible when SIM is assigned and there are pending SMS */}
+          {hasPending && simAssigned && (
+            <TouchableOpacity style={styles.sendNowBtn} onPress={handleSendNow}>
+              <Ionicons name="flash-outline" size={20} color="#FFF" />
+              <Text style={styles.sendNowBtnText}>Odeslat ihned</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.secondaryBtn} onPress={goBack}>
             <Text style={styles.secondaryBtnText}>Zpet na seznam</Text>
           </TouchableOpacity>
@@ -604,6 +724,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#059669', paddingVertical: 16, borderRadius: 12, gap: 8,
   },
   sendBtnText: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+  sendNowBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#059669', paddingVertical: 14, borderRadius: 12, gap: 8,
+    marginBottom: 4,
+  },
+  sendNowBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   secondaryBtn: {
     alignItems: 'center', paddingVertical: 12, marginTop: 8,
   },
@@ -646,6 +772,25 @@ const styles = StyleSheet.create({
   statBox: { alignItems: 'center' },
   statBoxValue: { fontSize: 22, fontWeight: 'bold' },
   statBoxLabel: { color: '#6B7280', fontSize: 11, marginTop: 2 },
+
+  // SIM picker
+  simPickerCard: {
+    marginHorizontal: 16, marginBottom: 12, padding: 14,
+    backgroundColor: '#1F2937', borderRadius: 12,
+    borderWidth: 1, borderColor: '#374151',
+  },
+  simPickerTitle: {
+    color: '#F9FAFB', fontSize: 15, fontWeight: '600', marginBottom: 10,
+  },
+  simBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#2563EB', paddingVertical: 12, borderRadius: 10,
+    gap: 8, marginBottom: 8,
+  },
+  simSplitBtn: {
+    backgroundColor: '#7C3AED',
+  },
+  simBtnText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
 
   // Empty state
   emptyState: {

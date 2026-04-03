@@ -146,6 +146,12 @@ export interface CampaignCreateResponse {
   recipient_count: number;
 }
 
+export interface CampaignAssignSimResponse {
+  success: boolean;
+  assigned: number;
+  message?: string;
+}
+
 export interface CampaignStatusResponse {
   success: boolean;
   id: number;

@@ -11,6 +11,7 @@ import {
   CampaignListResponse,
   CampaignCreateResponse,
   CampaignStatusResponse,
+  CampaignAssignSimResponse,
 } from '../types';
 
 const API_KEY_HEADER = 'X-API-Key';
@@ -176,6 +177,20 @@ export class GatewayApiClient {
       segment_id: segmentId,
       limit,
       ...(customBody ? { custom_body: customBody } : {}),
+    });
+  }
+
+  async assignSimToCampaign(
+    campaignId: number,
+    mode: 'single' | 'split',
+    simNumber?: string,
+    simNumbers?: string[],
+  ): Promise<CampaignAssignSimResponse> {
+    return this.request<CampaignAssignSimResponse>('/sms-gateway/campaign/assign-sim', {
+      campaign_id: campaignId,
+      mode,
+      ...(simNumber ? { sim_number: simNumber } : {}),
+      ...(simNumbers ? { sim_numbers: simNumbers } : {}),
     });
   }
 
