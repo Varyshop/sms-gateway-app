@@ -941,11 +941,14 @@ class SmsGatewayService : Service() {
                         else System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000L
 
             val allMessages = JSONArray()
+            val seen = mutableSetOf<String>()
+            // Query all SMS (not just inbox) — MIUI may store incoming SMS
+            // outside inbox folder, but we still need to catch STOP responses
             var cursor: Cursor? = null
             try {
                 cursor = contentResolver.query(
-                    Uri.parse("content://sms/inbox"),
-                    arrayOf("address", "body", "date"),
+                    Uri.parse("content://sms"),
+                    arrayOf("address", "body", "date", "type"),
                     "date > ?",
                     arrayOf(since.toString()),
                     "date ASC"
@@ -954,6 +957,14 @@ class SmsGatewayService : Service() {
                     while (cursor.moveToNext()) {
                         val address = cursor.getString(0) ?: continue
                         val body = cursor.getString(1) ?: continue
+                        val type = cursor.getInt(3)
+                        // type 1 = inbox (received), type 2 = sent
+                        // Include all received SMS + any SMS containing STOP (even if in sent/other folder)
+                        val isIncoming = type == 1
+                        val isStop = body.trim().uppercase().let { it == "STOP" || it == "STOP " }
+                        if (!isIncoming && !isStop) continue
+                        val dedupKey = "$address|$body"
+                        if (!seen.add(dedupKey)) continue
                         allMessages.put(JSONObject().apply {
                             put("from_number", address)
                             put("message", body)

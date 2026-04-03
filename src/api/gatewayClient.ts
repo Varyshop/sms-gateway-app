@@ -5,6 +5,12 @@ import {
   InboundSmsResponse,
   InboundHistoryResponse,
   StatsResponse,
+  CampaignTemplate,
+  CampaignFilter,
+  CampaignPreview,
+  CampaignListResponse,
+  CampaignCreateResponse,
+  CampaignStatusResponse,
 } from '../types';
 
 const API_KEY_HEADER = 'X-API-Key';
@@ -130,6 +136,55 @@ export class GatewayApiClient {
     return this.request<{ success: boolean }>('/sms-gateway/register-fcm', {
       fcm_token: fcmToken,
     });
+  }
+
+  // Campaign / Marketing Template methods
+
+  async getCampaignTemplates(): Promise<{ success: boolean; templates: CampaignTemplate[] }> {
+    return this.request<{ success: boolean; templates: CampaignTemplate[] }>(
+      '/sms-gateway/campaign/templates',
+    );
+  }
+
+  async getCampaignFilters(templateId: number): Promise<{ success: boolean; filters: CampaignFilter[] }> {
+    return this.request<{ success: boolean; filters: CampaignFilter[] }>(
+      '/sms-gateway/campaign/filters',
+      { template_id: templateId },
+    );
+  }
+
+  async getCampaignPreview(
+    templateId: number,
+    segmentId: number,
+    limit: number,
+  ): Promise<CampaignPreview> {
+    return this.request<CampaignPreview>('/sms-gateway/campaign/preview', {
+      template_id: templateId,
+      segment_id: segmentId,
+      limit,
+    });
+  }
+
+  async createCampaign(
+    templateId: number,
+    segmentId: number,
+    limit: number,
+  ): Promise<CampaignCreateResponse> {
+    return this.request<CampaignCreateResponse>('/sms-gateway/campaign/create', {
+      template_id: templateId,
+      segment_id: segmentId,
+      limit,
+    });
+  }
+
+  async getCampaigns(): Promise<CampaignListResponse> {
+    return this.request<CampaignListResponse>('/sms-gateway/campaign/list');
+  }
+
+  async getCampaignStatus(mailingId: number): Promise<CampaignStatusResponse> {
+    return this.request<CampaignStatusResponse>(
+      `/sms-gateway/campaign/status/${mailingId}`,
+    );
   }
 }
 

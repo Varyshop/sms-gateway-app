@@ -89,3 +89,70 @@ export interface SmsHistoryItem {
   timestamp: number;
   error_message?: string;
 }
+
+// Campaign / Marketing Templates
+
+export interface CampaignSegment {
+  id: number;
+  name: string;
+  code: string;
+}
+
+export interface CampaignTemplate {
+  id: number;
+  name: string;
+  body: string;
+  segments: CampaignSegment[];
+  default_limit: number;
+  max_limit: number;
+}
+
+export interface CampaignFilter {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  recipient_count: number;
+}
+
+export interface CampaignPreview {
+  success: boolean;
+  recipient_count: number;
+  preview_text: string;
+  template_name: string;
+  segment_name: string;
+}
+
+export interface CampaignSummary {
+  id: number;
+  name: string;
+  state: string;
+  date_created: string;
+  total: number;
+  sent: number;
+  pending: number;
+  error: number;
+}
+
+export interface CampaignListResponse {
+  success: boolean;
+  campaigns: CampaignSummary[];
+}
+
+export interface CampaignCreateResponse {
+  success: boolean;
+  campaign_id: number;
+  recipient_count: number;
+}
+
+export interface CampaignStatusResponse {
+  success: boolean;
+  id: number;
+  name: string;
+  state: string;
+  total: number;
+  sent: number;
+  pending: number;
+  error: number;
+  created_at: string;
+}
