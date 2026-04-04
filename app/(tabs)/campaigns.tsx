@@ -189,6 +189,9 @@ export default function CampaignsScreen() {
           order_count: 0,
           revenue: 0,
           optout: 0,
+          body_plaintext: bodyChanged ? editedBody.trim() : selectedTemplate.body,
+          sms_allow_unsubscribe: allowUnsubscribe,
+          exclude_contacted_days: selectedTemplate.exclude_contacted_days,
         };
         setStatusCampaign(campaign);
         setSimAssigned(false);
@@ -293,6 +296,38 @@ export default function CampaignsScreen() {
     setStatusCampaign(campaign);
     setSendTriggered(false);
     setScreen('status');
+
+    // Immediately fetch full status (detail fields like body, sms_allow_unsubscribe)
+    const client = getApiClient();
+    if (client) {
+      try {
+        const res = await client.getCampaignStatus(campaign.id);
+        if (res.success) {
+          setStatusCampaign({
+            id: res.id,
+            name: res.name,
+            state: res.state,
+            date_created: res.created_at,
+            total: res.total,
+            sent: res.sent,
+            pending: res.pending,
+            error: res.error,
+            clicked: res.clicked || 0,
+            total_clicks: res.total_clicks || 0,
+            order_count: res.order_count || 0,
+            revenue: res.revenue || 0,
+            optout: res.optout || 0,
+            sent_date: res.sent_date || '',
+            body_plaintext: res.body_plaintext || '',
+            sms_allow_unsubscribe: res.sms_allow_unsubscribe,
+            exclude_contacted_days: res.exclude_contacted_days || 0,
+          });
+        }
+      } catch {
+        // silent — polling will retry
+      }
+    }
+
     if (campaign.pending > 0 && campaign.state !== 'done') {
       startStatusPolling(campaign.id);
       // Detect SIMs for pending campaigns
@@ -579,40 +614,42 @@ export default function CampaignsScreen() {
             </View>
           </View>
 
-          {/* Campaign details */}
-          <View style={styles.summaryCard}>
-            {statusCampaign.body_plaintext ? (
-              <>
-                <Text style={styles.summaryLabel}>Text SMS:</Text>
-                <Text style={styles.detailBody} numberOfLines={4}>
-                  {statusCampaign.body_plaintext}
+          {/* Campaign details — shown once status poll populates the fields */}
+          {statusCampaign.body_plaintext !== undefined && (
+            <View style={styles.summaryCard}>
+              {statusCampaign.body_plaintext ? (
+                <>
+                  <Text style={styles.summaryLabel}>Text SMS:</Text>
+                  <Text style={styles.detailBody} numberOfLines={4}>
+                    {statusCampaign.body_plaintext}
+                  </Text>
+                </>
+              ) : null}
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>STOP zprava:</Text>
+                <Text style={[styles.detailValue, { color: statusCampaign.sms_allow_unsubscribe ? '#34D399' : '#6B7280' }]}>
+                  {statusCampaign.sms_allow_unsubscribe ? 'Ano' : 'Ne'}
                 </Text>
-              </>
-            ) : null}
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>STOP zprava:</Text>
-              <Text style={[styles.detailValue, { color: statusCampaign.sms_allow_unsubscribe ? '#34D399' : '#6B7280' }]}>
-                {statusCampaign.sms_allow_unsubscribe ? 'Ano' : 'Ne'}
-              </Text>
+              </View>
+              {(statusCampaign.exclude_contacted_days ?? 0) > 0 && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Vynechava kontaktovane:</Text>
+                  <Text style={styles.detailValue}>{statusCampaign.exclude_contacted_days} dni</Text>
+                </View>
+              )}
+              {statusCampaign.sent_date ? (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Datum odeslani:</Text>
+                  <Text style={styles.detailValue}>
+                    {new Date(statusCampaign.sent_date).toLocaleString('cs-CZ', {
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    })}
+                  </Text>
+                </View>
+              ) : null}
             </View>
-            {(statusCampaign.exclude_contacted_days ?? 0) > 0 && (
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Vynechava kontaktovane:</Text>
-                <Text style={styles.detailValue}>{statusCampaign.exclude_contacted_days} dni</Text>
-              </View>
-            )}
-            {statusCampaign.sent_date ? (
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Datum odeslani:</Text>
-                <Text style={styles.detailValue}>
-                  {new Date(statusCampaign.sent_date).toLocaleString('cs-CZ', {
-                    day: '2-digit', month: '2-digit', year: 'numeric',
-                    hour: '2-digit', minute: '2-digit',
-                  })}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+          )}
 
           {/* Marketing stats — clicks, orders, revenue, optout */}
           {(statusCampaign.clicked > 0 || statusCampaign.order_count > 0 || statusCampaign.optout > 0) && (
@@ -621,7 +658,6 @@ export default function CampaignsScreen() {
               <View style={styles.divider} />
               <View style={styles.statsGrid}>
                 <StatBox label="Kliknulo" value={statusCampaign.clicked} color="#60A5FA" />
-                <StatBox label="Kliknuti" value={statusCampaign.total_clicks} color="#93C5FD" />
                 <StatBox label="Objednavky" value={statusCampaign.order_count} color="#A78BFA" />
                 <StatBox label="Odhlaseno" value={statusCampaign.optout} color="#F87171" />
               </View>
@@ -757,6 +793,11 @@ export default function CampaignsScreen() {
                 <Text style={styles.cardStat}>{item.sent}/{item.total} odeslano</Text>
                 {item.error > 0 && (
                   <Text style={[styles.cardStat, { color: '#F87171' }]}>{item.error} chyb</Text>
+                )}
+                {(item.revenue ?? 0) > 0 && (
+                  <Text style={[styles.cardStat, { color: '#34D399' }]}>
+                    {item.revenue!.toLocaleString('cs-CZ', { maximumFractionDigits: 0 })} Kc
+                  </Text>
                 )}
               </View>
               {item.date_created ? (
