@@ -139,9 +139,9 @@ export default function DashboardScreen() {
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
         <View style={styles.emptyState}>
           <Ionicons name="qr-code-outline" size={64} color="#6B7280" />
-          <Text style={styles.emptyTitle}>Neni sparovano</Text>
+          <Text style={styles.emptyTitle}>Není spárováno</Text>
           <Text style={styles.emptySubtitle}>
-            Prejdete do Nastaveni a naskenujte QR kod z Odoo
+            Přejděte do Nastavení a naskenujte QR kód z Odoo
           </Text>
         </View>
       </View>
@@ -186,7 +186,7 @@ export default function DashboardScreen() {
           color="#FFF"
         />
         <Text style={styles.toggleText}>
-          {serviceRunning ? 'Zastavit odesilani' : 'Spustit odesilani'}
+          {serviceRunning ? 'Zastavit odesílání' : 'Spustit odesílání'}
         </Text>
       </TouchableOpacity>
 
@@ -203,7 +203,7 @@ export default function DashboardScreen() {
             <View style={styles.summaryItem}>
               <Ionicons name="hourglass-outline" size={18} color="#FBBF24" />
               <Text style={styles.summaryValue}>{totalPending}</Text>
-              <Text style={styles.summaryLabel}>Ve fronte</Text>
+              <Text style={styles.summaryLabel}>Ve frontě</Text>
             </View>
             <View style={styles.summaryItem}>
               <Ionicons name="today-outline" size={18} color="#3B82F6" />
@@ -213,7 +213,7 @@ export default function DashboardScreen() {
             <View style={styles.summaryItem}>
               <Ionicons name="calendar-outline" size={18} color="#8B5CF6" />
               <Text style={styles.summaryValue}>{totalSentMonth}</Text>
-              <Text style={styles.summaryLabel}>Mesic</Text>
+              <Text style={styles.summaryLabel}>Měsíc</Text>
             </View>
             <View style={styles.summaryItem}>
               <Ionicons name="stats-chart-outline" size={18} color="#34D399" />
@@ -246,7 +246,7 @@ export default function DashboardScreen() {
             {/* Daily limit */}
             <View style={styles.limitSection}>
               <View style={styles.limitHeader}>
-                <Text style={styles.limitLabel}>Denni limit</Text>
+                <Text style={styles.limitLabel}>Denní limit</Text>
                 <Text style={styles.limitValue}>{formatLimit(phone.sent_today, phone.daily_limit)}</Text>
               </View>
               <ProgressBar value={phone.sent_today} limit={phone.daily_limit} color="#3B82F6" />
@@ -255,7 +255,7 @@ export default function DashboardScreen() {
             {/* Monthly limit */}
             <View style={styles.limitSection}>
               <View style={styles.limitHeader}>
-                <Text style={styles.limitLabel}>Mesicni limit</Text>
+                <Text style={styles.limitLabel}>Měsíční limit</Text>
                 <Text style={styles.limitValue}>{formatLimit(phone.sent_month, phone.monthly_limit)}</Text>
               </View>
               <ProgressBar value={phone.sent_month} limit={phone.monthly_limit} color="#8B5CF6" />
@@ -267,7 +267,7 @@ export default function DashboardScreen() {
                 <Text style={[styles.statValue, phonePending > 0 && styles.statValueWarning]}>
                   {phonePending}
                 </Text>
-                <Text style={styles.statLabel}>Ve fronte</Text>
+                <Text style={styles.statLabel}>Ve frontě</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{phone.sent_today}</Text>
@@ -275,7 +275,7 @@ export default function DashboardScreen() {
               </View>
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{phone.sent_month}</Text>
-                <Text style={styles.statLabel}>Mesic</Text>
+                <Text style={styles.statLabel}>Měsíc</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{phone.sent_total}</Text>
@@ -293,7 +293,7 @@ export default function DashboardScreen() {
       {phoneStats.length === 0 && !error && (
         <View style={styles.emptyState}>
           <Ionicons name="phone-portrait-outline" size={48} color="#6B7280" />
-          <Text style={styles.emptySubtitle}>Zadne telefony nenalezeny</Text>
+          <Text style={styles.emptySubtitle}>Žádné telefony nenalezeny</Text>
         </View>
       )}
     </ScrollView>

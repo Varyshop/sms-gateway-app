@@ -27,14 +27,14 @@ export default function QrScannerScreen() {
       const parsed: QrCodeData = JSON.parse(data);
 
       if (parsed.type !== 'sms_gateway') {
-        Alert.alert('Neplatny QR kod', 'Tento QR kod neni urcen pro SMS Gateway aplikaci.', [
+        Alert.alert('Neplatný QR kód', 'Tento QR kód není určen pro SMS Gateway aplikaci.', [
           { text: 'OK', onPress: () => setScanned(false) },
         ]);
         return;
       }
 
       if (!parsed.url || !parsed.api_key) {
-        Alert.alert('Neplatny QR kod', 'QR kod neobsahuje potrebne udaje.', [
+        Alert.alert('Neplatný QR kód', 'QR kód neobsahuje potřebné údaje.', [
           { text: 'OK', onPress: () => setScanned(false) },
         ]);
         return;
@@ -60,12 +60,12 @@ export default function QrScannerScreen() {
       }
 
       Alert.alert(
-        'Sparovano',
-        `Uspesne pripojeno k ${parsed.url}`,
+        'Spárováno',
+        `Úspěšně připojeno k ${parsed.url}`,
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error) {
-      Alert.alert('Chyba', 'Nepodarilo se precist QR kod.', [
+      Alert.alert('Chyba', 'Nepodařilo se přečíst QR kód.', [
         { text: 'OK', onPress: () => setScanned(false) },
       ]);
     }
@@ -74,7 +74,7 @@ export default function QrScannerScreen() {
   if (!permission) {
     return (
       <View style={styles.container}>
-        <Text style={styles.text}>Nacitam kameru...</Text>
+        <Text style={styles.text}>Načítám kameru...</Text>
       </View>
     );
   }
@@ -83,12 +83,12 @@ export default function QrScannerScreen() {
     return (
       <View style={styles.container}>
         <Ionicons name="camera-outline" size={64} color="#6B7280" />
-        <Text style={styles.text}>Potrebujeme pristup ke kamere</Text>
+        <Text style={styles.text}>Potřebujeme přístup ke kameře</Text>
         <TouchableOpacity style={styles.button} onPress={requestPermission}>
           <Text style={styles.buttonText}>Povolit kameru</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
-          <Text style={styles.cancelText}>Zrusit</Text>
+          <Text style={styles.cancelText}>Zrušit</Text>
         </TouchableOpacity>
       </View>
     );
@@ -116,7 +116,7 @@ export default function QrScannerScreen() {
           </View>
 
           <Text style={styles.instruction}>
-            Nasmerujte kameru na QR kod v Odoo
+            Nasměrujte kameru na QR kód v Odoo
           </Text>
         </View>
       </CameraView>

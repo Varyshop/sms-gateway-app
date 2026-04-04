@@ -26,7 +26,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="messages"
         options={{
-          title: 'Zpravy',
+          title: 'Zprávy',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbubbles-outline" size={size} color={color} />
           ),
@@ -35,7 +35,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="campaigns"
         options={{
-          title: 'Kampane',
+          title: 'Kampaně',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="megaphone-outline" size={size} color={color} />
           ),
@@ -44,7 +44,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Nastaveni',
+          title: 'Nastavení',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),

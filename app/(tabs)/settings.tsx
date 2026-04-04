@@ -90,7 +90,7 @@ export default function SettingsScreen() {
       isNaN(intervalSec) ||
       intervalSec < 1
     ) {
-      setSmsCheckStatus("Neplatne hodnoty");
+      setSmsCheckStatus("Neplatné hodnoty");
       return;
     }
     const intervalMs = intervalSec * 1000;
@@ -103,7 +103,7 @@ export default function SettingsScreen() {
         smsCheckMaxCount: maxCount,
         smsCheckIntervalMs: intervalMs,
       });
-      setSmsCheckStatus("Ulozeno");
+      setSmsCheckStatus("Uloženo");
       setTimeout(() => setSmsCheckStatus(null), 2000);
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Chyba";
@@ -177,7 +177,7 @@ export default function SettingsScreen() {
 
   const handleDisconnect = () => {
     Alert.alert("Odpojit", "Opravdu chcete odpojit telefon od serveru?", [
-      { text: "Zrusit", style: "cancel" },
+      { text: "Zrušit", style: "cancel" },
       {
         text: "Odpojit",
         style: "destructive",
@@ -216,11 +216,11 @@ export default function SettingsScreen() {
         contentContainerStyle={[styles.contentContainer, { paddingBottom: insets.bottom + 40 }]}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Nastaveni</Text>
+        <Text style={styles.title}>Nastavení</Text>
 
         {/* Connection Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Pripojeni</Text>
+          <Text style={styles.sectionTitle}>Připojení</Text>
 
           {isConfigured() ? (
             <>
@@ -250,7 +250,7 @@ export default function SettingsScreen() {
               onPress={handleQrScan}
             >
               <Ionicons name="qr-code-outline" size={20} color="#FFF" />
-              <Text style={styles.primaryButtonText}>Naskenovat QR kod</Text>
+              <Text style={styles.primaryButtonText}>Naskenovat QR kód</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -266,7 +266,7 @@ export default function SettingsScreen() {
               </View>
             ))
           ) : (
-            <Text style={styles.emptyText}>Zadne SIM karty nenalezeny</Text>
+            <Text style={styles.emptyText}>Žádné SIM karty nenalezeny</Text>
           )}
           <TouchableOpacity
             style={styles.secondaryButton}
@@ -278,9 +278,9 @@ export default function SettingsScreen() {
 
         {/* Service Control */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Sluzba</Text>
+          <Text style={styles.sectionTitle}>Služba</Text>
           <View style={styles.switchRow}>
-            <Text style={styles.label}>Odesilani SMS</Text>
+            <Text style={styles.label}>Odesílání SMS</Text>
             <Switch
               value={settings.serviceEnabled}
               onValueChange={handleToggleService}
@@ -318,14 +318,14 @@ export default function SettingsScreen() {
             onPress={async () => {
               try {
                 await GatewayService.rescanInbox();
-                Alert.alert('Prohledavani', 'Prohledavani prichozich SMS z poslednich 30 dni bylo spusteno.');
+                Alert.alert('Prohledávání', 'Prohledávání příchozích SMS z posledních 30 dní bylo spuštěno.');
               } catch (e) {
-                Alert.alert('Chyba', 'Nepodarilo se spustit prohledavani.');
+                Alert.alert('Chyba', 'Nepodařilo se spustit prohledávání.');
               }
             }}
           >
             <Ionicons name="refresh-outline" size={16} color="#3B82F6" />
-            <Text style={styles.secondaryButtonText}>Znovu prohledat prijate SMS</Text>
+            <Text style={styles.secondaryButtonText}>Znovu prohledat přijaté SMS</Text>
           </TouchableOpacity>
         </View>
 
@@ -333,7 +333,7 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>SMS limit (Android)</Text>
           <Text style={styles.hintText}>
-            Maximalni pocet SMS v intervalu pred systemovym alertem. Vyzaduje
+            Maximální počet SMS v intervalu před systémovým alertem. Vyžaduje
             ADB: adb shell pm grant com.varyshop.smsgatewayapp
             android.permission.WRITE_SECURE_SETTINGS
           </Text>
@@ -374,7 +374,7 @@ export default function SettingsScreen() {
                 styles.hintText,
                 {
                   marginTop: 8,
-                  color: smsCheckStatus === "Ulozeno" ? "#34D399" : "#F87171",
+                  color: smsCheckStatus === "Uloženo" ? "#34D399" : "#F87171",
                 },
               ]}
             >

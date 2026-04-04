@@ -62,7 +62,7 @@ export default function HistoryScreen() {
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Historie SMS</Text>
-        <Text style={styles.count}>{filteredHistory.length} zaznam(u)</Text>
+        <Text style={styles.count}>{filteredHistory.length} záznam(ů)</Text>
       </View>
 
       {/* Filter tabs */}
@@ -74,7 +74,7 @@ export default function HistoryScreen() {
             onPress={() => setFilter(f)}
           >
             <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-              {f === 'all' ? 'Vse' : f === 'sent' ? 'Odeslano' : 'Chyby'}
+              {f === 'all' ? 'Vše' : f === 'sent' ? 'Odesláno' : 'Chyby'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -87,7 +87,7 @@ export default function HistoryScreen() {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Ionicons name="document-text-outline" size={48} color="#6B7280" />
-            <Text style={styles.emptyText}>Zadna historie</Text>
+            <Text style={styles.emptyText}>Žádná historie</Text>
           </View>
         }
       />

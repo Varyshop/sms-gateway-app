@@ -19,7 +19,7 @@ type Filter = 'all' | 'stop' | 'stop_not_blacklisted';
 const PAGE_SIZE = 50;
 
 const FILTER_LABELS: Record<Filter, string> = {
-  all: 'Vse',
+  all: 'Vše',
   stop: 'STOP',
   stop_not_blacklisted: 'Neblokované',
 };
@@ -93,12 +93,12 @@ export default function InboundScreen() {
     if (!client || selected.size === 0) return;
 
     Alert.alert(
-      'Pridat na blacklist',
-      `Opravdu chcete pridat ${selected.size} cisel na blacklist?`,
+      'Přidat na blacklist',
+      `Opravdu chcete přidat ${selected.size} čísel na blacklist?`,
       [
-        { text: 'Zrusit', style: 'cancel' },
+        { text: 'Zrušit', style: 'cancel' },
         {
-          text: 'Pridat',
+          text: 'Přidat',
           style: 'destructive',
           onPress: async () => {
             setBlacklisting(true);
@@ -107,10 +107,10 @@ export default function InboundScreen() {
               if (res.success) {
                 setSelected(new Set());
                 await fetchMessages(0, false);
-                Alert.alert('Hotovo', `Pridano ${res.blacklisted} cisel na blacklist`);
+                Alert.alert('Hotovo', `Přidáno ${res.blacklisted} čísel na blacklist`);
               }
             } catch (e) {
-              Alert.alert('Chyba', 'Nepodarilo se pridat na blacklist');
+              Alert.alert('Chyba', 'Nepodařilo se přidat na blacklist');
             } finally {
               setBlacklisting(false);
             }
@@ -125,12 +125,12 @@ export default function InboundScreen() {
     if (!client) return;
 
     Alert.alert(
-      'Pridat na blacklist',
-      `Pridat ${item.from_number} na blacklist?`,
+      'Přidat na blacklist',
+      `Přidat ${item.from_number} na blacklist?`,
       [
-        { text: 'Zrusit', style: 'cancel' },
+        { text: 'Zrušit', style: 'cancel' },
         {
-          text: 'Pridat',
+          text: 'Přidat',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -141,7 +141,7 @@ export default function InboundScreen() {
                 );
               }
             } catch (e) {
-              Alert.alert('Chyba', 'Nepodarilo se pridat na blacklist');
+              Alert.alert('Chyba', 'Nepodařilo se přidat na blacklist');
             }
           },
         },
@@ -204,7 +204,7 @@ export default function InboundScreen() {
         ) : item.is_stop ? (
           <TouchableOpacity onPress={() => blacklistSingle(item)} style={styles.blacklistBtn}>
             <Ionicons name="ban-outline" size={13} color="#FBBF24" />
-            <Text style={styles.blacklistBtnText}>Pridat na blacklist</Text>
+            <Text style={styles.blacklistBtnText}>Přidat na blacklist</Text>
           </TouchableOpacity>
         ) : null}
       </TouchableOpacity>
@@ -216,7 +216,7 @@ export default function InboundScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Prichozi SMS</Text>
+        <Text style={styles.title}>Příchozí SMS</Text>
         <Text style={styles.count}>{total} celkem</Text>
       </View>
 
@@ -241,7 +241,7 @@ export default function InboundScreen() {
             <TouchableOpacity onPress={selectAll} style={styles.bulkBtn}>
               <Ionicons name="checkbox-outline" size={16} color="#9CA3AF" />
               <Text style={styles.bulkBtnText}>
-                {selected.size > 0 ? `Vybrano (${selected.size})` : 'Vybrat vse'}
+                {selected.size > 0 ? `Vybrano (${selected.size})` : 'Vybrat vše'}
               </Text>
             </TouchableOpacity>
           )}
@@ -269,7 +269,7 @@ export default function InboundScreen() {
       {initialLoading ? (
         <View style={styles.emptyState}>
           <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.emptyText}>Nacitam...</Text>
+          <Text style={styles.emptyText}>Načítám...</Text>
         </View>
       ) : (
         <FlatList
@@ -288,8 +288,8 @@ export default function InboundScreen() {
               <Ionicons name="mail-open-outline" size={48} color="#6B7280" />
               <Text style={styles.emptyText}>
                 {filter === 'stop_not_blacklisted'
-                  ? 'Zadne neblokované STOP zpravy'
-                  : 'Zadne prichozi SMS'}
+                  ? 'Žádné neblokované STOP zprávy'
+                  : 'Žádné příchozí SMS'}
               </Text>
             </View>
           }
