@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   TextInput,
   Alert,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,6 +42,7 @@ export default function CampaignsScreen() {
   const [previewText, setPreviewText] = useState('');
   const [editedBody, setEditedBody] = useState('');
   const [previewCount, setPreviewCount] = useState(0);
+  const [allowUnsubscribe, setAllowUnsubscribe] = useState(true);
   const [loading, setLoading] = useState(false);
 
   // Status state
@@ -94,6 +96,7 @@ export default function CampaignsScreen() {
         setSelectedFilter(null);
         setLimit('100');
         setPreviewText('');
+        setAllowUnsubscribe(true);
         setScreen('step1');
       } else {
         Alert.alert('Zadne sablony', 'Nejsou nastavene zadne SMS sablony pro tento telefon.');
@@ -166,6 +169,7 @@ export default function CampaignsScreen() {
         parseInt(limit, 10) || 100,
         bodyChanged ? editedBody.trim() : undefined,
         sendNow,
+        allowUnsubscribe,
       );
       if (res.success) {
         const campaign: CampaignSummary = {
@@ -445,6 +449,15 @@ export default function CampaignsScreen() {
             textAlignVertical="top"
             placeholderTextColor="#6B7280"
           />
+          <View style={styles.unsubRow}>
+            <Text style={styles.unsubLabel}>Pridat STOP zpravu</Text>
+            <Switch
+              value={allowUnsubscribe}
+              onValueChange={setAllowUnsubscribe}
+              trackColor={{ false: '#374151', true: '#2563EB' }}
+              thumbColor={allowUnsubscribe ? '#93C5FD' : '#6B7280'}
+            />
+          </View>
         </View>
         <View style={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16 }}>
           <TouchableOpacity
@@ -866,6 +879,11 @@ const styles = StyleSheet.create({
     padding: 12, borderRadius: 8, marginTop: 6, minHeight: 100,
     borderWidth: 1, borderColor: '#4B5563',
   },
+  unsubRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginTop: 12,
+  },
+  unsubLabel: { color: '#D1D5DB', fontSize: 14 },
 
   // Status
   statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },

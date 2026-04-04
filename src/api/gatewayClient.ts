@@ -172,12 +172,14 @@ export class GatewayApiClient {
     limit: number,
     customBody?: string,
     sendNow: boolean = true,
+    smsAllowUnsubscribe: boolean = true,
   ): Promise<CampaignCreateResponse> {
     return this.request<CampaignCreateResponse>('/sms-gateway/campaign/create', {
       template_id: templateId,
       segment_id: segmentId,
       limit,
       send_now: sendNow,
+      sms_allow_unsubscribe: smsAllowUnsubscribe,
       ...(customBody ? { custom_body: customBody } : {}),
     });
   }
