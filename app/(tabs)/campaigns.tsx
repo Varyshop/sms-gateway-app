@@ -51,6 +51,7 @@ export default function CampaignsScreen() {
   const [sims, setSims] = useState<SimCardInfo[]>([]);
   const [simAssigned, setSimAssigned] = useState(false);
   const [simAssigning, setSimAssigning] = useState(false);
+  const [sendTriggered, setSendTriggered] = useState(false);
 
   const fetchCampaigns = useCallback(async () => {
     const client = getApiClient();
@@ -184,6 +185,7 @@ export default function CampaignsScreen() {
         };
         setStatusCampaign(campaign);
         setSimAssigned(false);
+        setSendTriggered(false);
         setScreen('status');
         startStatusPolling(res.campaign_id);
 
@@ -278,6 +280,7 @@ export default function CampaignsScreen() {
 
   const viewCampaignStatus = async (campaign: CampaignSummary) => {
     setStatusCampaign(campaign);
+    setSendTriggered(false);
     setScreen('status');
     if (campaign.pending > 0 && campaign.state !== 'done') {
       startStatusPolling(campaign.id);
@@ -477,6 +480,7 @@ export default function CampaignsScreen() {
         statusCampaign.id, mode, simNumber, simNumbers,
       );
       setSimAssigned(true);
+      setSendTriggered(true);
       triggerImmediatePoll();
     } catch (e) {
       Alert.alert('Chyba', 'Nepodarilo se priradit SIM.');
@@ -503,6 +507,7 @@ export default function CampaignsScreen() {
         // No SIM detected — still call to assign phone + unpause
         await client.assignSimToCampaign(statusCampaign.id, 'single');
       }
+      setSendTriggered(true);
       triggerImmediatePoll();
     } catch (e) {
       console.warn('[Campaigns] Send now assign failed:', e);
@@ -630,8 +635,8 @@ export default function CampaignsScreen() {
         )}
 
         <View style={{ paddingHorizontal: 16 }}>
-          {/* Send now button — visible when SIM is assigned and there are pending SMS */}
-          {hasPending && simAssigned && (
+          {/* Send now button — hidden after successful trigger */}
+          {hasPending && simAssigned && !sendTriggered && (
             <TouchableOpacity
               style={[styles.sendNowBtn, simAssigning && styles.btnDisabled]}
               onPress={handleSendNow}
