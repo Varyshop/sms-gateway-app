@@ -10,6 +10,9 @@ import {
   TextInput,
   Alert,
   Switch,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -271,6 +274,10 @@ export default function CampaignsScreen() {
             order_count: res.order_count || 0,
             revenue: res.revenue || 0,
             optout: res.optout || 0,
+            sent_date: res.sent_date || '',
+            body_plaintext: res.body_plaintext || '',
+            sms_allow_unsubscribe: res.sms_allow_unsubscribe,
+            exclude_contacted_days: res.exclude_contacted_days || 0,
           });
           if (res.state === 'done' || res.pending === 0) {
             if (statusPollRef.current) clearInterval(statusPollRef.current);
@@ -367,7 +374,10 @@ export default function CampaignsScreen() {
 
   if (screen === 'step2') {
     return (
-      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+      <KeyboardAvoidingView
+        style={[styles.container, { paddingTop: insets.top + 8 }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <Header title="2. Filtr a pocet" onBack={goBack} />
         {loading ? <Loader /> : (
           <>
@@ -381,6 +391,7 @@ export default function CampaignsScreen() {
               data={filters}
               keyExtractor={(item) => String(item.id)}
               contentContainerStyle={{ paddingBottom: 200 }}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
@@ -425,57 +436,65 @@ export default function CampaignsScreen() {
             </View>
           </>
         )}
-      </View>
+      </KeyboardAvoidingView>
     );
   }
 
   if (screen === 'step3') {
     return (
-      <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+      <KeyboardAvoidingView
+        style={[styles.container, { paddingTop: insets.top + 8 }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <Header title="3. Potvrzeni" onBack={goBack} />
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>{selectedTemplate?.name}</Text>
-          <View style={styles.divider} />
-          <Text style={styles.summaryLabel}>Segment:</Text>
-          <Text style={styles.summaryValue}>{selectedFilter?.name}</Text>
-          <Text style={styles.summaryLabel}>Pocet prijemcu:</Text>
-          <Text style={styles.summaryValue}>{previewCount}</Text>
-          <Text style={styles.summaryLabel}>Text SMS (lze upravit):</Text>
-          <TextInput
-            style={styles.previewInput}
-            value={editedBody}
-            onChangeText={setEditedBody}
-            multiline
-            textAlignVertical="top"
-            placeholderTextColor="#6B7280"
-          />
-          <View style={styles.unsubRow}>
-            <Text style={styles.unsubLabel}>Pridat STOP zpravu</Text>
-            <Switch
-              value={allowUnsubscribe}
-              onValueChange={setAllowUnsubscribe}
-              trackColor={{ false: '#374151', true: '#2563EB' }}
-              thumbColor={allowUnsubscribe ? '#93C5FD' : '#6B7280'}
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>{selectedTemplate?.name}</Text>
+            <View style={styles.divider} />
+            <Text style={styles.summaryLabel}>Segment:</Text>
+            <Text style={styles.summaryValue}>{selectedFilter?.name}</Text>
+            <Text style={styles.summaryLabel}>Pocet prijemcu:</Text>
+            <Text style={styles.summaryValue}>{previewCount}</Text>
+            <Text style={styles.summaryLabel}>Text SMS (lze upravit):</Text>
+            <TextInput
+              style={styles.previewInput}
+              value={editedBody}
+              onChangeText={setEditedBody}
+              multiline
+              textAlignVertical="top"
+              placeholderTextColor="#6B7280"
             />
+            <View style={styles.unsubRow}>
+              <Text style={styles.unsubLabel}>Pridat STOP zpravu</Text>
+              <Switch
+                value={allowUnsubscribe}
+                onValueChange={setAllowUnsubscribe}
+                trackColor={{ false: '#374151', true: '#2563EB' }}
+                thumbColor={allowUnsubscribe ? '#93C5FD' : '#6B7280'}
+              />
+            </View>
           </View>
-        </View>
-        <View style={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16 }}>
-          <TouchableOpacity
-            style={[styles.sendBtn, loading && styles.btnDisabled]}
-            onPress={createCampaign}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <>
-                <Ionicons name="megaphone-outline" size={20} color="#FFF" />
-                <Text style={styles.sendBtnText}>Vytvorit kampan ({previewCount} SMS)</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
+          <View style={{ paddingHorizontal: 16 }}>
+            <TouchableOpacity
+              style={[styles.sendBtn, loading && styles.btnDisabled]}
+              onPress={createCampaign}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="megaphone-outline" size={20} color="#FFF" />
+                  <Text style={styles.sendBtnText}>Vytvorit kampan ({previewCount} SMS)</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -540,135 +559,172 @@ export default function CampaignsScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
         <Header title="Stav kampane" onBack={goBack} />
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>{statusCampaign.name}</Text>
-          <View style={styles.divider} />
-          <View style={styles.statusRow}>
-            <Text style={[styles.stateBadge, { color: stateColor(statusCampaign.state) }]}>
-              {stateLabel(statusCampaign.state)}
-            </Text>
-          </View>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-          </View>
-          <View style={styles.statsGrid}>
-            <StatBox label="Celkem" value={statusCampaign.total} color="#F9FAFB" />
-            <StatBox label="Odeslano" value={statusCampaign.sent} color="#34D399" />
-            <StatBox label="Ceka" value={statusCampaign.pending} color="#FBBF24" />
-            <StatBox label="Chyba" value={statusCampaign.error} color="#F87171" />
-          </View>
-        </View>
-
-        {/* Marketing stats — clicks, orders, revenue, optout */}
-        {(statusCampaign.clicked > 0 || statusCampaign.order_count > 0 || statusCampaign.optout > 0) && (
+        <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}>
           <View style={styles.summaryCard}>
-            <Text style={styles.marketingTitle}>Vysledky kampane</Text>
+            <Text style={styles.summaryTitle}>{statusCampaign.name}</Text>
             <View style={styles.divider} />
-            <View style={styles.statsGrid}>
-              <StatBox label="Kliknulo" value={statusCampaign.clicked} color="#60A5FA" />
-              <StatBox label="Kliknuti" value={statusCampaign.total_clicks} color="#93C5FD" />
-              <StatBox label="Objednavky" value={statusCampaign.order_count} color="#A78BFA" />
-              <StatBox label="Odhlaseno" value={statusCampaign.optout} color="#F87171" />
+            <View style={styles.statusRow}>
+              <Text style={[styles.stateBadge, { color: stateColor(statusCampaign.state) }]}>
+                {stateLabel(statusCampaign.state)}
+              </Text>
             </View>
-            {statusCampaign.revenue > 0 && (
-              <View style={styles.revenueRow}>
-                <Text style={styles.revenueLabel}>Prijem z kampane</Text>
-                <Text style={styles.revenueValue}>
-                  {statusCampaign.revenue.toLocaleString('cs-CZ', {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  })} Kc
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+            </View>
+            <View style={styles.statsGrid}>
+              <StatBox label="Celkem" value={statusCampaign.total} color="#F9FAFB" />
+              <StatBox label="Odeslano" value={statusCampaign.sent} color="#34D399" />
+              <StatBox label="Ceka" value={statusCampaign.pending} color="#FBBF24" />
+              <StatBox label="Chyba" value={statusCampaign.error} color="#F87171" />
+            </View>
+          </View>
+
+          {/* Campaign details */}
+          <View style={styles.summaryCard}>
+            {statusCampaign.body_plaintext ? (
+              <>
+                <Text style={styles.summaryLabel}>Text SMS:</Text>
+                <Text style={styles.detailBody} numberOfLines={4}>
+                  {statusCampaign.body_plaintext}
                 </Text>
+              </>
+            ) : null}
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>STOP zprava:</Text>
+              <Text style={[styles.detailValue, { color: statusCampaign.sms_allow_unsubscribe ? '#34D399' : '#6B7280' }]}>
+                {statusCampaign.sms_allow_unsubscribe ? 'Ano' : 'Ne'}
+              </Text>
+            </View>
+            {(statusCampaign.exclude_contacted_days ?? 0) > 0 && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Vynechava kontaktovane:</Text>
+                <Text style={styles.detailValue}>{statusCampaign.exclude_contacted_days} dni</Text>
               </View>
             )}
-            {statusCampaign.sent > 0 && (
-              <View style={styles.ratioRow}>
-                <Text style={styles.ratioText}>
-                  CTR: {((statusCampaign.clicked / statusCampaign.sent) * 100).toFixed(1)}%
+            {statusCampaign.sent_date ? (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Datum odeslani:</Text>
+                <Text style={styles.detailValue}>
+                  {new Date(statusCampaign.sent_date).toLocaleString('cs-CZ', {
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                  })}
                 </Text>
-                {statusCampaign.order_count > 0 && (
-                  <Text style={styles.ratioText}>
-                    Konverze: {((statusCampaign.order_count / statusCampaign.sent) * 100).toFixed(1)}%
-                  </Text>
-                )}
-                {statusCampaign.optout > 0 && (
-                  <Text style={[styles.ratioText, { color: '#F87171' }]}>
-                    Odhlaseni: {((statusCampaign.optout / statusCampaign.sent) * 100).toFixed(1)}%
-                  </Text>
-                )}
               </View>
-            )}
+            ) : null}
           </View>
-        )}
 
-        {/* SIM selection for dual-SIM devices */}
-        {showSimPicker && (
-          <View style={styles.simPickerCard}>
-            <Text style={styles.simPickerTitle}>Vyberte SIM pro odeslani</Text>
-            {sims.map((sim) => (
-              <TouchableOpacity
-                key={sim.subscriptionId}
-                style={styles.simBtn}
-                disabled={simAssigning}
-                onPress={() => assignSimAndSend('single', sim.phoneNumber || undefined)}
-              >
-                {simAssigning ? (
-                  <ActivityIndicator color="#FFF" size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="phone-portrait-outline" size={18} color="#FFF" />
-                    <Text style={styles.simBtnText}>{getSimDisplayString(sim)}</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            ))}
-            {sims.length >= 2 && sims.every((s) => s.phoneNumber) && (
-              <TouchableOpacity
-                style={[styles.simBtn, styles.simSplitBtn]}
-                disabled={simAssigning}
-                onPress={() =>
-                  assignSimAndSend(
-                    'split',
-                    undefined,
-                    sims.map((s) => s.phoneNumber!),
-                  )
-                }
-              >
-                {simAssigning ? (
-                  <ActivityIndicator color="#FFF" size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="git-branch-outline" size={18} color="#FFF" />
-                    <Text style={styles.simBtnText}>Rozdelit mezi obe SIM</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
-        <View style={{ paddingHorizontal: 16 }}>
-          {/* Send now button — hidden after successful trigger */}
-          {hasPending && simAssigned && !sendTriggered && (
-            <TouchableOpacity
-              style={[styles.sendNowBtn, simAssigning && styles.btnDisabled]}
-              onPress={handleSendNow}
-              disabled={simAssigning}
-            >
-              {simAssigning ? (
-                <ActivityIndicator color="#FFF" size="small" />
-              ) : (
-                <>
-                  <Ionicons name="flash-outline" size={20} color="#FFF" />
-                  <Text style={styles.sendNowBtnText}>Odeslat ihned</Text>
-                </>
+          {/* Marketing stats — clicks, orders, revenue, optout */}
+          {(statusCampaign.clicked > 0 || statusCampaign.order_count > 0 || statusCampaign.optout > 0) && (
+            <View style={styles.summaryCard}>
+              <Text style={styles.marketingTitle}>Vysledky kampane</Text>
+              <View style={styles.divider} />
+              <View style={styles.statsGrid}>
+                <StatBox label="Kliknulo" value={statusCampaign.clicked} color="#60A5FA" />
+                <StatBox label="Kliknuti" value={statusCampaign.total_clicks} color="#93C5FD" />
+                <StatBox label="Objednavky" value={statusCampaign.order_count} color="#A78BFA" />
+                <StatBox label="Odhlaseno" value={statusCampaign.optout} color="#F87171" />
+              </View>
+              {statusCampaign.revenue > 0 && (
+                <View style={styles.revenueRow}>
+                  <Text style={styles.revenueLabel}>Prijem z kampane</Text>
+                  <Text style={styles.revenueValue}>
+                    {statusCampaign.revenue.toLocaleString('cs-CZ', {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 0,
+                    })} Kc
+                  </Text>
+                </View>
               )}
-            </TouchableOpacity>
+              {statusCampaign.sent > 0 && (
+                <View style={styles.ratioRow}>
+                  <Text style={styles.ratioText}>
+                    CTR: {((statusCampaign.clicked / statusCampaign.sent) * 100).toFixed(1)}%
+                  </Text>
+                  {statusCampaign.order_count > 0 && (
+                    <Text style={styles.ratioText}>
+                      Konverze: {((statusCampaign.order_count / statusCampaign.sent) * 100).toFixed(1)}%
+                    </Text>
+                  )}
+                  {statusCampaign.optout > 0 && (
+                    <Text style={[styles.ratioText, { color: '#F87171' }]}>
+                      Odhlaseni: {((statusCampaign.optout / statusCampaign.sent) * 100).toFixed(1)}%
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
           )}
-          <TouchableOpacity style={styles.secondaryBtn} onPress={goBack}>
-            <Text style={styles.secondaryBtnText}>Zpet na seznam</Text>
-          </TouchableOpacity>
-        </View>
+
+          {/* SIM selection for dual-SIM devices */}
+          {showSimPicker && (
+            <View style={styles.simPickerCard}>
+              <Text style={styles.simPickerTitle}>Vyberte SIM pro odeslani</Text>
+              {sims.map((sim) => (
+                <TouchableOpacity
+                  key={sim.subscriptionId}
+                  style={styles.simBtn}
+                  disabled={simAssigning}
+                  onPress={() => assignSimAndSend('single', sim.phoneNumber || undefined)}
+                >
+                  {simAssigning ? (
+                    <ActivityIndicator color="#FFF" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="phone-portrait-outline" size={18} color="#FFF" />
+                      <Text style={styles.simBtnText}>{getSimDisplayString(sim)}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ))}
+              {sims.length >= 2 && sims.every((s) => s.phoneNumber) && (
+                <TouchableOpacity
+                  style={[styles.simBtn, styles.simSplitBtn]}
+                  disabled={simAssigning}
+                  onPress={() =>
+                    assignSimAndSend(
+                      'split',
+                      undefined,
+                      sims.map((s) => s.phoneNumber!),
+                    )
+                  }
+                >
+                  {simAssigning ? (
+                    <ActivityIndicator color="#FFF" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="git-branch-outline" size={18} color="#FFF" />
+                      <Text style={styles.simBtnText}>Rozdelit mezi obe SIM</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          <View style={{ paddingHorizontal: 16 }}>
+            {/* Send now button — hidden after successful trigger */}
+            {hasPending && simAssigned && !sendTriggered && (
+              <TouchableOpacity
+                style={[styles.sendNowBtn, simAssigning && styles.btnDisabled]}
+                onPress={handleSendNow}
+                disabled={simAssigning}
+              >
+                {simAssigning ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="flash-outline" size={20} color="#FFF" />
+                    <Text style={styles.sendNowBtnText}>Odeslat ihned</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.secondaryBtn} onPress={goBack}>
+              <Text style={styles.secondaryBtnText}>Zpet na seznam</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </View>
     );
   }
@@ -884,6 +940,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   unsubLabel: { color: '#D1D5DB', fontSize: 14 },
+  detailBody: { color: '#D1D5DB', fontSize: 13, lineHeight: 18, marginBottom: 8 },
+  detailRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 4,
+  },
+  detailLabel: { color: '#9CA3AF', fontSize: 13 },
+  detailValue: { color: '#F9FAFB', fontSize: 13, fontWeight: '500' },
 
   // Status
   statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },

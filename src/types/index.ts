@@ -138,6 +138,11 @@ export interface CampaignSummary {
   order_count: number;
   revenue: number;
   optout: number;
+  // Detail fields (populated from status endpoint)
+  sent_date?: string;
+  body_plaintext?: string;
+  sms_allow_unsubscribe?: boolean;
+  exclude_contacted_days?: number;
 }
 
 export interface CampaignListResponse {
@@ -173,4 +178,8 @@ export interface CampaignStatusResponse {
   revenue: number;
   optout: number;
   created_at: string;
+  sent_date: string;
+  body_plaintext: string;
+  sms_allow_unsubscribe: boolean;
+  exclude_contacted_days: number;
 }
