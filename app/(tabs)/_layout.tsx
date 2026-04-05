@@ -1,23 +1,26 @@
-import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { getSettings } from "../../src/storage/settings";
 
 export default function TabLayout() {
+  const simpleMode = getSettings().simpleMode;
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#3B82F6',
-        tabBarInactiveTintColor: '#888',
+        tabBarActiveTintColor: "#3B82F6",
+        tabBarInactiveTintColor: "#888",
         tabBarStyle: {
-          backgroundColor: '#111827',
-          borderTopColor: '#1F2937',
+          backgroundColor: "#111827",
+          borderTopColor: "#1F2937",
         },
       }}
     >
       <Tabs.Screen
         name="dashboard"
         options={{
-          title: 'Dashboard',
+          title: "Přehled",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="speedometer-outline" size={size} color={color} />
           ),
@@ -26,7 +29,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="messages"
         options={{
-          title: 'Zprávy',
+          title: "Zprávy",
+          href: simpleMode ? null : undefined,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbubbles-outline" size={size} color={color} />
           ),
@@ -35,7 +39,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="campaigns"
         options={{
-          title: 'Kampaně',
+          title: "Kampaně",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="megaphone-outline" size={size} color={color} />
           ),
@@ -44,7 +48,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Nastavení',
+          title: "Nastavení",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),

@@ -1,5 +1,13 @@
 import { requireNativeModule, Platform, EventEmitter, Subscription } from "expo-modules-core";
 
+export interface SmsResultEvent {
+  smsId: number;
+  phoneNumber: string;
+  message: string;
+  status: 'sent' | 'error';
+  errorMessage?: string;
+}
+
 export interface ServiceStatus {
   isRunning: boolean;
   lastPollTime: number;
@@ -37,6 +45,8 @@ interface GatewayServiceModule {
   requestBatteryOptimizationExemption(): Promise<boolean>;
   rescanInbox(): Promise<boolean>;
   getFcmToken(): Promise<string | null>;
+  triggerImmediatePoll(): Promise<boolean>;
+  getStatusCounts(): Promise<{ unsyncedCount: number; totalCount: number }>;
 }
 
 const GatewayService: GatewayServiceModule | null =
@@ -168,6 +178,31 @@ export async function getFcmToken(): Promise<string | null> {
   return GatewayService.getFcmToken();
 }
 
+/**
+ * Subscribe to individual SMS result events from the native service.
+ * Fires after each SMS is sent or fails, with full details for UI history.
+ */
+export function onSmsResult(callback: (event: SmsResultEvent) => void): Subscription | null {
+  if (!emitter) return null;
+  return emitter.addListener("onSmsResult", callback);
+}
+
+/**
+ * Trigger an immediate poll cycle in the native service.
+ */
+export async function triggerImmediatePoll(): Promise<boolean> {
+  if (!GatewayService) return false;
+  return GatewayService.triggerImmediatePoll();
+}
+
+/**
+ * Get SMS status counts from the persistent SQLite database.
+ */
+export async function getStatusCounts(): Promise<{ unsyncedCount: number; totalCount: number }> {
+  if (!GatewayService) return { unsyncedCount: 0, totalCount: 0 };
+  return GatewayService.getStatusCounts();
+}
+
 export default {
   startService,
   stopService,
@@ -179,4 +214,7 @@ export default {
   rescanInbox,
   getFcmToken,
   onStatusChange,
+  onSmsResult,
+  triggerImmediatePoll,
+  getStatusCounts,
 };

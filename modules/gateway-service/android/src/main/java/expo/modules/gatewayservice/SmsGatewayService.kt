@@ -32,6 +32,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -61,12 +62,14 @@ class SmsGatewayService : Service() {
         const val ACTION_REGISTER_FCM = "expo.modules.gatewayservice.REGISTER_FCM"
         const val ACTION_RESCAN_INBOX = "expo.modules.gatewayservice.RESCAN_INBOX"
         const val ACTION_STATUS_CHANGED = "expo.modules.gatewayservice.STATUS_CHANGED"
+        const val ACTION_SMS_RESULT = "expo.modules.gatewayservice.SMS_RESULT"
         const val ACTION_ALARM_POLL = "expo.modules.gatewayservice.ALARM_POLL"
         const val ACTION_ALARM_HEARTBEAT = "expo.modules.gatewayservice.ALARM_HEARTBEAT"
         const val EXTRA_SMS_ID = "sms_id"
         const val EXTRA_PART_INDEX = "part_index"
         const val EXTRA_TOTAL_PARTS = "total_parts"
         const val PREFS_NAME = "SmsGatewayPrefs"
+        private const val HOUSEKEEPING_INTERVAL_MS = 3600_000L // 1 hour
 
         @Volatile
         var isRunning = false
@@ -219,10 +222,14 @@ class SmsGatewayService : Service() {
     // Delivery tracking: smsId -> DeliveryTracker
     private val deliveryTrackers = ConcurrentHashMap<Int, DeliveryTracker>()
     private val pendingIntentCounter = AtomicInteger(0)
+    private val isPollingActive = AtomicBoolean(false)
 
     // Broadcast receivers for sent/delivered status
     private var sentReceiver: BroadcastReceiver? = null
     private var deliveredReceiver: BroadcastReceiver? = null
+
+    // Persistent status database — single source of truth on device
+    private lateinit var statusDb: SmsStatusDb
 
     /**
      * Tracks delivery status for a multipart SMS.
@@ -231,10 +238,13 @@ class SmsGatewayService : Service() {
     private data class DeliveryTracker(
         val smsId: Int,
         val totalParts: Int,
+        val phoneNumber: String = "",
+        val message: String = "",
         var sentParts: Int = 0,
         var failedParts: Int = 0,
         var deliveredParts: Int = 0,
-        var failReason: String? = null
+        var failReason: String? = null,
+        val createdAt: Long = System.currentTimeMillis()
     ) {
         val allPartsSent: Boolean get() = (sentParts + failedParts) >= totalParts
         val isSentOk: Boolean get() = sentParts == totalParts
@@ -245,6 +255,7 @@ class SmsGatewayService : Service() {
     override fun onCreate() {
         super.onCreate()
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        statusDb = SmsStatusDb(this)
         createNotificationChannel()
     }
 
@@ -340,6 +351,9 @@ class SmsGatewayService : Service() {
         // Register FCM token with server
         obtainAndRegisterFcmToken()
 
+        // Reconcile unsynced statuses with server on startup
+        executor.execute { reconcileWithServer() }
+
         // Retroactive STOP check
         executor.execute { retroactiveStopCheck() }
     }
@@ -349,7 +363,12 @@ class SmsGatewayService : Service() {
         isRunning = false
 
         cancelAlarms()
-        batchFlushFuture?.cancel(false)
+        syncFuture?.cancel(false)
+        sweepFuture?.cancel(false)
+
+        // Final sync before shutdown — flush any remaining statuses to server
+        try { syncToServer() } catch (_: Exception) {}
+
         scheduler?.shutdown()
         scheduler = null
 
@@ -375,8 +394,13 @@ class SmsGatewayService : Service() {
                 val totalParts = intent.getIntExtra(EXTRA_TOTAL_PARTS, 1)
                 if (smsId == -1) return
 
-                val tracker = deliveryTrackers.getOrPut(smsId) {
-                    DeliveryTracker(smsId, totalParts)
+                // IMPORTANT: Only process callbacks for SMS that still have an active tracker.
+                // If the tracker was already removed (by sweep or finalize), this is a late
+                // callback — ignore it to prevent ghost trackers and status overwrites.
+                val tracker = deliveryTrackers[smsId]
+                if (tracker == null) {
+                    Log.w(TAG, "SMS $smsId part ${partIndex + 1}/$totalParts: late callback ignored (already finalized/swept)")
+                    return
                 }
 
                 when (resultCode) {
@@ -455,7 +479,7 @@ class SmsGatewayService : Service() {
 
     /**
      * Called when all parts of an SMS have been processed by SmsManager.
-     * Adds the result to the batch queue for server confirmation.
+     * Persists the result to SQLite for reliable server sync.
      */
     private fun finalizeSmsDelivery(tracker: DeliveryTracker) {
         deliveryTrackers.remove(tracker.smsId)
@@ -463,50 +487,229 @@ class SmsGatewayService : Service() {
         if (tracker.isSentOk) {
             sessionSentCount++
             Log.i(TAG, "SMS ${tracker.smsId}: all ${tracker.totalParts} parts sent OK")
-            addToBatchQueue(tracker.smsId, "sent", null)
+            statusDb.insertOrUpdate(
+                tracker.smsId, "sent", null,
+                tracker.totalParts, tracker.sentParts, tracker.failedParts,
+            )
+            broadcastSmsResult(tracker.smsId, tracker.phoneNumber, tracker.message, "sent", null)
         } else {
             sessionErrorCount++
             val reason = tracker.failReason ?: "PARTIAL_FAILURE"
             Log.e(TAG, "SMS ${tracker.smsId}: ${tracker.failedParts}/${tracker.totalParts} parts failed: $reason")
-            addToBatchQueue(tracker.smsId, "error", reason)
+            statusDb.insertOrUpdate(
+                tracker.smsId, "error", reason,
+                tracker.totalParts, tracker.sentParts, tracker.failedParts,
+            )
+            broadcastSmsResult(tracker.smsId, tracker.phoneNumber, tracker.message, "error", reason)
         }
         broadcastStatusChange()
     }
 
-    // ---- Batch Queue for Server Confirmation ----
-
-    private val batchQueue = java.util.concurrent.ConcurrentLinkedQueue<JSONObject>()
-    private var batchFlushFuture: ScheduledFuture<*>? = null
-
-    private fun addToBatchQueue(smsId: Int, status: String, errorMessage: String?) {
-        batchQueue.add(JSONObject().apply {
-            put("id", smsId)
-            put("status", status)
-            if (errorMessage != null) put("error_message", errorMessage)
-        })
+    /**
+     * Broadcast an individual SMS result to GatewayServiceModule → JS EventEmitter.
+     * Used to update UI history in real time.
+     */
+    private fun broadcastSmsResult(smsId: Int, phoneNumber: String, message: String, status: String, errorMessage: String?) {
+        try {
+            val intent = Intent(ACTION_SMS_RESULT).apply {
+                putExtra("smsId", smsId)
+                putExtra("phoneNumber", phoneNumber)
+                putExtra("message", message)
+                putExtra("status", status)
+                if (errorMessage != null) putExtra("errorMessage", errorMessage)
+                setPackage(packageName)
+            }
+            sendBroadcast(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to broadcast SMS result", e)
+        }
     }
 
-    private fun flushBatchQueue() {
-        if (batchQueue.isEmpty()) return
+    // ---- Persistent Status Sync ----
+
+    private var syncFuture: ScheduledFuture<*>? = null
+    private var sweepFuture: ScheduledFuture<*>? = null
+    private var lastHousekeepingTime: Long = 0
+
+    /**
+     * Sync unconfirmed SMS statuses from SQLite to the server.
+     * Items are NEVER removed from DB until the server acknowledges them.
+     */
+    private fun syncToServer() {
         try {
             val url = apiUrl
             val key = apiKey
             if (url.isEmpty() || key.isEmpty()) return
 
+            val unsyncedItems = statusDb.getUnsynced(50)
+            if (unsyncedItems.isEmpty()) return
+
+            // Exponential backoff: skip items based on syncAttempts
+            // attempt 0-2: always try, 3-5: every ~30s (10 cycles), 6-9: every ~5min, 10+: every ~30min
+            val syncCycleCount = System.currentTimeMillis() / 3000 // rough 3s cycle counter
+            val readyItems = unsyncedItems.filter { item ->
+                when {
+                    item.syncAttempts < 3 -> true
+                    item.syncAttempts < 6 -> syncCycleCount % 10 == 0L
+                    item.syncAttempts < 10 -> syncCycleCount % 100 == 0L
+                    else -> syncCycleCount % 600 == 0L
+                }
+            }
+            if (readyItems.isEmpty()) return
+
             val results = JSONArray()
-            var item = batchQueue.poll()
-            while (item != null) {
-                results.put(item)
-                item = batchQueue.poll()
+            for (item in readyItems) {
+                results.put(JSONObject().apply {
+                    put("id", item.smsId)
+                    put("status", item.status)
+                    if (item.errorMessage != null) put("error_message", item.errorMessage)
+                })
             }
 
-            if (results.length() == 0) return
+            Log.i(TAG, "Syncing ${results.length()} SMS statuses to server")
+            val response = httpPost("$url/sms-gateway/confirm-batch", key, JSONObject().apply {
+                put("results", results)
+            })
 
-            Log.i(TAG, "Flushing batch queue: ${results.length()} results")
-            confirmBatch(url, key, results)
+            val allIds = readyItems.map { it.smsId }
+
+            if (response != null && response.optBoolean("success", false)) {
+                val processed = response.optInt("processed", 0)
+                Log.i(TAG, "Server confirmed $processed SMS statuses")
+
+                // Use ack_ids if available, otherwise mark all as synced
+                val ackArray = response.optJSONArray("ack_ids")
+                val ackIds = if (ackArray != null) {
+                    (0 until ackArray.length()).map { ackArray.getInt(it) }
+                } else {
+                    allIds
+                }
+                statusDb.markSynced(ackIds)
+
+                // Update counters from server response
+                if (response.has("sent_today")) {
+                    sentToday = response.getInt("sent_today")
+                    sentMonth = response.optInt("sent_month", sentMonth)
+                    sentTotal = response.optInt("sent_total", sentTotal)
+                    dailyLimit = response.optInt("daily_limit", dailyLimit)
+                    monthlyLimit = response.optInt("monthly_limit", monthlyLimit)
+                    persistCounters()
+                    broadcastStatusChange()
+                }
+
+                val errors = response.optJSONArray("errors")
+                if (errors != null && errors.length() > 0) {
+                    Log.w(TAG, "Sync had ${errors.length()} server-side errors")
+                }
+            } else {
+                // HTTP failed — items stay in DB for next cycle
+                val errorMsg = response?.optString("error") ?: "HTTP failure"
+                Log.e(TAG, "Sync failed: $errorMsg — ${allIds.size} items will retry")
+                statusDb.incrementSyncAttempts(allIds, errorMsg)
+            }
+
             updateNotification()
+
+            // Housekeeping: remove synced entries older than 48h (max once per hour)
+            val now = System.currentTimeMillis()
+            if (now - lastHousekeepingTime > HOUSEKEEPING_INTERVAL_MS) {
+                lastHousekeepingTime = now
+                val cleaned = statusDb.deleteOlderThan()
+                if (cleaned > 0) {
+                    Log.d(TAG, "Housekeeping: cleaned $cleaned old synced entries")
+                }
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Batch queue flush error", e)
+            Log.e(TAG, "Sync error", e)
+        }
+    }
+
+    /**
+     * Sweep delivery trackers that have been waiting for BroadcastReceiver
+     * callbacks for too long (> 60s).  These are written to SQLite so they
+     * will be synced to the server.
+     */
+    private fun sweepStaleTrackers() {
+        val now = System.currentTimeMillis()
+        val staleThreshold = 60_000L // 60 seconds
+        val stale = deliveryTrackers.filter { (_, tracker) ->
+            now - tracker.createdAt > staleThreshold
+        }
+        if (stale.isEmpty()) return
+
+        Log.w(TAG, "Sweeping ${stale.size} stale delivery trackers (>60s without callback)")
+        for ((smsId, tracker) in stale) {
+            deliveryTrackers.remove(smsId)
+            // Only mark as "sent" if ALL parts reported OK.
+            // Partial success = error to prevent false positives.
+            val status = if (tracker.sentParts == tracker.totalParts && tracker.failedParts == 0) "sent" else "error"
+            val error = if (status == "error") {
+                "TIMEOUT_${tracker.sentParts}of${tracker.totalParts}_parts_sent_${tracker.failedParts}_failed"
+            } else null
+
+            if (status == "sent") sessionSentCount++ else sessionErrorCount++
+
+            statusDb.insertOrUpdate(
+                smsId, status, error,
+                tracker.totalParts, tracker.sentParts, tracker.failedParts,
+            )
+            broadcastSmsResult(smsId, tracker.phoneNumber, tracker.message, status, error)
+            Log.w(TAG, "SMS $smsId: stale tracker resolved as $status " +
+                "(${tracker.sentParts}/${tracker.totalParts} parts reported)")
+        }
+        broadcastStatusChange()
+    }
+
+    /**
+     * Reconcile unsynced statuses with the server on startup.
+     * Sends all unsynced SMS IDs to /sms-gateway/reconcile and marks
+     * already-confirmed ones as synced in SQLite.
+     */
+    private fun reconcileWithServer() {
+        try {
+            val url = apiUrl
+            val key = apiKey
+            if (url.isEmpty() || key.isEmpty()) return
+
+            val unsyncedIds = statusDb.getUnsyncedIds()
+            if (unsyncedIds.isEmpty()) {
+                Log.d(TAG, "Reconcile: no unsynced statuses")
+                return
+            }
+
+            Log.i(TAG, "Reconcile: sending ${unsyncedIds.size} unsynced IDs to server")
+            val body = JSONObject().apply {
+                put("known_ids", JSONArray(unsyncedIds))
+            }
+            val response = httpPost("$url/sms-gateway/reconcile", key, body)
+            if (response == null || !response.optBoolean("success", false)) {
+                Log.w(TAG, "Reconcile request failed")
+                return
+            }
+
+            // Mark already-confirmed IDs as synced locally
+            val alreadyConfirmed = response.optJSONArray("already_confirmed_ids")
+            if (alreadyConfirmed != null && alreadyConfirmed.length() > 0) {
+                val confirmedList = (0 until alreadyConfirmed.length()).map { alreadyConfirmed.getInt(it) }
+                statusDb.markSynced(confirmedList)
+                Log.i(TAG, "Reconcile: marked ${confirmedList.size} as already confirmed")
+            }
+
+            // Not-found IDs (deleted on server) — mark as synced to stop retrying
+            val notFoundIds = response.optJSONArray("not_found_ids")
+            if (notFoundIds != null && notFoundIds.length() > 0) {
+                val notFoundList = (0 until notFoundIds.length()).map { notFoundIds.getInt(it) }
+                statusDb.markSynced(notFoundList)
+                Log.w(TAG, "Reconcile: ${notFoundList.size} IDs not found on server, marked as synced")
+            }
+
+            // Stuck IDs that server still has in processing/sending — we'll sync them normally
+            val stuckIds = response.optJSONArray("stuck_ids")
+            if (stuckIds != null && stuckIds.length() > 0) {
+                Log.i(TAG, "Reconcile: ${stuckIds.length()} stuck IDs will be resolved via normal sync")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Reconcile error", e)
         }
     }
 
@@ -514,17 +717,24 @@ class SmsGatewayService : Service() {
     //
     // Uses AlarmManager.setExactAndAllowWhileIdle() for poll + heartbeat
     // instead of ScheduledExecutorService which MIUI suspends in Doze.
-    // Batch flush stays on ScheduledExecutorService (runs only when
-    // poll/heartbeat just ran and service is awake anyway).
+    // Sync + sweep run on ScheduledExecutorService (only when service is awake).
 
     private fun startSchedulers() {
         scheduler = Executors.newScheduledThreadPool(2)
 
-        // Batch flush every 3s — only matters when service is active
-        batchFlushFuture = scheduler?.scheduleWithFixedDelay(
-            { flushBatchQueue() },
+        // Sync SQLite → server every 3s
+        syncFuture = scheduler?.scheduleWithFixedDelay(
+            { syncToServer() },
             3,
             3,
+            TimeUnit.SECONDS
+        )
+
+        // Sweep stale trackers every 30s
+        sweepFuture = scheduler?.scheduleWithFixedDelay(
+            { sweepStaleTrackers() },
+            30,
+            30,
             TimeUnit.SECONDS
         )
 
@@ -540,7 +750,7 @@ class SmsGatewayService : Service() {
 
         val pollSec = getEffectivePollIntervalSec()
         val hbSec = heartbeatIntervalSec.coerceAtLeast(30)
-        Log.i(TAG, "Schedulers started: poll=${pollSec}s (alarm), heartbeat=${hbSec}s (alarm), batchFlush=3s")
+        Log.i(TAG, "Schedulers started: poll=${pollSec}s (alarm), heartbeat=${hbSec}s (alarm), sync=3s, sweep=30s")
     }
 
     private fun getEffectivePollIntervalSec(): Long {
@@ -593,7 +803,8 @@ class SmsGatewayService : Service() {
 
     private fun restartSchedulers() {
         cancelAlarms()
-        batchFlushFuture?.cancel(false)
+        syncFuture?.cancel(false)
+        sweepFuture?.cancel(false)
         scheduler?.shutdown()
         scheduler = null
         startSchedulers()
@@ -602,6 +813,11 @@ class SmsGatewayService : Service() {
     // ---- Poll & Send ----
 
     private fun pollAndSend() {
+        // Atomic guard: prevent overlapping poll cycles from AlarmManager, FCM, heartbeat safety net
+        if (!isPollingActive.compareAndSet(false, true)) {
+            Log.d(TAG, "Poll skipped — another poll cycle is still running")
+            return
+        }
         try {
             val url = apiUrl
             val key = apiKey
@@ -656,12 +872,12 @@ class SmsGatewayService : Service() {
                 }
             }
 
-            // After sending all, wait a bit for SentReceiver callbacks, then flush
-            Thread.sleep(2000)
-            flushBatchQueue()
+            // syncToServer() runs on its own 3s scheduler — no need to wait here
             updateNotification()
         } catch (e: Exception) {
             Log.e(TAG, "Poll error", e)
+        } finally {
+            isPollingActive.set(false)
         }
     }
 
@@ -681,7 +897,7 @@ class SmsGatewayService : Service() {
             val totalParts = parts.size
 
             // Pre-create tracker
-            deliveryTrackers[smsId] = DeliveryTracker(smsId, totalParts)
+            deliveryTrackers[smsId] = DeliveryTracker(smsId, totalParts, phoneNumber, message)
 
             if (totalParts == 1) {
                 val sentPI = createSentPendingIntent(smsId, 0, 1)
@@ -704,7 +920,8 @@ class SmsGatewayService : Service() {
             sessionErrorCount++
             val errorMessage = e.message ?: "Unknown error"
             Log.e(TAG, "Failed to submit SMS $smsId to SmsManager", e)
-            addToBatchQueue(smsId, "error", errorMessage)
+            statusDb.insertOrUpdate(smsId, "error", errorMessage)
+            broadcastSmsResult(smsId, phoneNumber, message, "error", errorMessage)
         }
     }
 
@@ -737,55 +954,6 @@ class SmsGatewayService : Service() {
         )
     }
 
-    // ---- Batch Confirm ----
-
-    private fun confirmBatch(apiUrl: String, apiKey: String, results: JSONArray) {
-        try {
-            val body = JSONObject().apply {
-                put("results", results)
-            }
-            val response = httpPost("$apiUrl/sms-gateway/confirm-batch", apiKey, body)
-            if (response != null && response.optBoolean("success", false)) {
-                val processed = response.optInt("processed", 0)
-                Log.i(TAG, "Batch confirmed: $processed SMS processed")
-
-                if (response.has("sent_today")) {
-                    sentToday = response.getInt("sent_today")
-                    sentMonth = response.optInt("sent_month", sentMonth)
-                    sentTotal = response.optInt("sent_total", sentTotal)
-                    dailyLimit = response.optInt("daily_limit", dailyLimit)
-                    monthlyLimit = response.optInt("monthly_limit", monthlyLimit)
-                    persistCounters()
-                    broadcastStatusChange()
-                }
-
-                val errors = response.optJSONArray("errors")
-                if (errors != null && errors.length() > 0) {
-                    Log.w(TAG, "Batch had ${errors.length()} server-side errors")
-                }
-            } else {
-                Log.e(TAG, "Batch confirm failed, falling back to individual confirms")
-                for (i in 0 until results.length()) {
-                    val item = results.getJSONObject(i)
-                    val smsId = item.getInt("id")
-                    val status = item.getString("status")
-                    val errorMsg = item.optString("error_message", null)
-                    try {
-                        val fallbackBody = JSONObject().apply {
-                            put("status", status)
-                            if (errorMsg != null) put("error_message", errorMsg)
-                        }
-                        httpPost("$apiUrl/sms-gateway/confirm/$smsId", apiKey, fallbackBody)
-                    } catch (_: Exception) {
-                        Log.e(TAG, "Fallback confirm also failed for SMS $smsId")
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Batch confirm request failed", e)
-        }
-    }
-
     // ---- Heartbeat ----
 
     private fun sendHeartbeat() {
@@ -801,6 +969,7 @@ class SmsGatewayService : Service() {
 
             val body = JSONObject().apply {
                 put("phone_numbers", JSONArray(phoneNumbers))
+                put("unsynced_count", statusDb.getUnsyncedCount())
             }
 
             val response = httpPost("$url/sms-gateway/heartbeat", key, body)
@@ -1106,7 +1275,8 @@ class SmsGatewayService : Service() {
         Log.i(TAG, "Service destroyed")
         isRunning = false
         cancelAlarms()
-        batchFlushFuture?.cancel(false)
+        syncFuture?.cancel(false)
+        sweepFuture?.cancel(false)
         scheduler?.shutdown()
         unregisterSmsReceivers()
         wakeLock?.let { if (it.isHeld) it.release() }

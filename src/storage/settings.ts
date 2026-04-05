@@ -11,6 +11,7 @@ const KEYS = {
   HEARTBEAT_INTERVAL: 'heartbeat_interval',
   SMS_CHECK_MAX_COUNT: 'sms_check_max_count',
   SMS_CHECK_INTERVAL_MS: 'sms_check_interval_ms',
+  SIMPLE_MODE: 'simple_mode',
 } as const;
 
 const DEFAULTS = {
@@ -28,6 +29,7 @@ export interface AppSettings {
   heartbeatInterval: number;
   smsCheckMaxCount: number;
   smsCheckIntervalMs: number;
+  simpleMode: boolean;
 }
 
 function getString(key: string): string | undefined {
@@ -82,6 +84,7 @@ export function getSettings(): AppSettings {
     heartbeatInterval: getNumber(KEYS.HEARTBEAT_INTERVAL) ?? DEFAULTS.HEARTBEAT_INTERVAL,
     smsCheckMaxCount: getNumber(KEYS.SMS_CHECK_MAX_COUNT) ?? DEFAULTS.SMS_CHECK_MAX_COUNT,
     smsCheckIntervalMs: getNumber(KEYS.SMS_CHECK_INTERVAL_MS) ?? DEFAULTS.SMS_CHECK_INTERVAL_MS,
+    simpleMode: getBoolean(KEYS.SIMPLE_MODE) ?? false,
   };
 }
 
@@ -117,6 +120,10 @@ export function setSmsCheckMaxCount(count: number): void {
 
 export function setSmsCheckIntervalMs(ms: number): void {
   setValue(KEYS.SMS_CHECK_INTERVAL_MS, ms);
+}
+
+export function setSimpleMode(enabled: boolean): void {
+  setValue(KEYS.SIMPLE_MODE, enabled);
 }
 
 export function clearSettings(): void {

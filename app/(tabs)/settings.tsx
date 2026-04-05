@@ -22,6 +22,7 @@ import {
   setHeartbeatInterval,
   setSmsCheckMaxCount,
   setSmsCheckIntervalMs,
+  setSimpleMode,
   isConfigured,
   clearSettings,
 } from "../../src/storage/settings";
@@ -38,7 +39,10 @@ import {
   stopSmsQueue,
   stopSmsQueueFull,
 } from "../../src/services/smsQueueService";
-import { startInboundSmsListener, stopInboundSmsListener } from "../../src/services/inboundSmsService";
+import {
+  startInboundSmsListener,
+  stopInboundSmsListener,
+} from "../../src/services/inboundSmsService";
 import GatewayService from "../../modules/gateway-service";
 import SimManager, {
   SimCardInfo,
@@ -148,8 +152,11 @@ export default function SettingsScreen() {
       // Update native service config
       if (settings.serviceEnabled) {
         GatewayService.updateConfig(
-          newSettings.apiUrl, newSettings.apiKey, newSettings.serviceEnabled,
-          newSettings.pollingInterval, newSettings.heartbeatInterval
+          newSettings.apiUrl,
+          newSettings.apiKey,
+          newSettings.serviceEnabled,
+          newSettings.pollingInterval,
+          newSettings.heartbeatInterval,
         );
         stopSmsQueue();
         startSmsQueue();
@@ -166,8 +173,11 @@ export default function SettingsScreen() {
       // Update native service config
       if (settings.serviceEnabled) {
         GatewayService.updateConfig(
-          newSettings.apiUrl, newSettings.apiKey, newSettings.serviceEnabled,
-          newSettings.pollingInterval, newSettings.heartbeatInterval
+          newSettings.apiUrl,
+          newSettings.apiKey,
+          newSettings.serviceEnabled,
+          newSettings.pollingInterval,
+          newSettings.heartbeatInterval,
         );
         stopHeartbeat();
         startHeartbeat();
@@ -213,7 +223,10 @@ export default function SettingsScreen() {
     >
       <ScrollView
         style={[styles.container, { paddingTop: insets.top + 8 }]}
-        contentContainerStyle={[styles.contentContainer, { paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[
+          styles.contentContainer,
+          { paddingBottom: insets.bottom + 40 },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.title}>Nastavení</Text>
@@ -224,25 +237,36 @@ export default function SettingsScreen() {
 
           {isConfigured() ? (
             <>
-              <View style={styles.row}>
-                <Text style={styles.label}>Server</Text>
-                <Text style={styles.value} numberOfLines={1}>
-                  {settings.apiUrl}
-                </Text>
-              </View>
-              <View style={styles.row}>
-                <Text style={styles.label}>API Key</Text>
-                <Text style={styles.value}>
-                  {"*".repeat(8)}...{settings.apiKey.slice(-4)}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={styles.dangerButton}
-                onPress={handleDisconnect}
-              >
-                <Ionicons name="unlink-outline" size={18} color="#F87171" />
-                <Text style={styles.dangerButtonText}>Odpojit</Text>
-              </TouchableOpacity>
+              {settings.simpleMode ? (
+                <View style={styles.row}>
+                  <Text style={styles.label}>Stav</Text>
+                  <Text style={[styles.value, { color: "#34D399" }]}>
+                    Připojeno
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.row}>
+                    <Text style={styles.label}>Server</Text>
+                    <Text style={styles.value} numberOfLines={1}>
+                      {settings.apiUrl}
+                    </Text>
+                  </View>
+                  <View style={styles.row}>
+                    <Text style={styles.label}>API Key</Text>
+                    <Text style={styles.value}>
+                      {"*".repeat(8)}...{settings.apiKey.slice(-4)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.dangerButton}
+                    onPress={handleDisconnect}
+                  >
+                    <Ionicons name="unlink-outline" size={18} color="#F87171" />
+                    <Text style={styles.dangerButtonText}>Odpojit</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </>
           ) : (
             <TouchableOpacity
@@ -255,26 +279,52 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        {/* SIM Info */}
+        {/* Mode Toggle */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>SIM karty</Text>
-          {simCards.length > 0 ? (
-            simCards.map((sim) => (
-              <View key={sim.subscriptionId} style={styles.row}>
-                <Text style={styles.label}>SIM {sim.slotIndex + 1}</Text>
-                <Text style={styles.value}>{getSimDisplayString(sim)}</Text>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>Žádné SIM karty nenalezeny</Text>
-          )}
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={loadSimCards}
-          >
-            <Text style={styles.secondaryButtonText}>Obnovit</Text>
-          </TouchableOpacity>
+          <Text style={styles.sectionTitle}>Režim aplikace</Text>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={styles.label}>Jednoduchý režim</Text>
+              <Text
+                style={[styles.hintText, { marginTop: 4, marginBottom: 0 }]}
+              >
+                Skryje pokročilé funkce a statistiky
+              </Text>
+            </View>
+            <Switch
+              value={settings.simpleMode}
+              onValueChange={(val) => {
+                setSimpleMode(val);
+                setSettingsState({ ...settings, simpleMode: val });
+              }}
+              trackColor={{ false: "#374151", true: "#1D4ED8" }}
+              thumbColor={settings.simpleMode ? "#3B82F6" : "#9CA3AF"}
+            />
+          </View>
         </View>
+
+        {/* SIM Info */}
+        {!settings.simpleMode && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>SIM karty</Text>
+            {simCards.length > 0 ? (
+              simCards.map((sim) => (
+                <View key={sim.subscriptionId} style={styles.row}>
+                  <Text style={styles.label}>SIM {sim.slotIndex + 1}</Text>
+                  <Text style={styles.value}>{getSimDisplayString(sim)}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>Žádné SIM karty nenalezeny</Text>
+            )}
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={loadSimCards}
+            >
+              <Text style={styles.secondaryButtonText}>Obnovit</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Service Control */}
         <View style={styles.section}>
@@ -289,110 +339,133 @@ export default function SettingsScreen() {
             />
           </View>
 
-          <View style={styles.inputRow}>
-            <Text style={styles.label}>Polling interval (s)</Text>
-            <TextInput
-              style={styles.input}
-              value={pollIntervalText}
-              onChangeText={setPollIntervalText}
-              onBlur={handleSavePollingInterval}
-              keyboardType="numeric"
-              placeholderTextColor="#6B7280"
-            />
-          </View>
+          {!settings.simpleMode && (
+            <>
+              <View style={styles.inputRow}>
+                <Text style={styles.label}>Polling interval (s)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={pollIntervalText}
+                  onChangeText={setPollIntervalText}
+                  onBlur={handleSavePollingInterval}
+                  keyboardType="numeric"
+                  placeholderTextColor="#6B7280"
+                />
+              </View>
 
-          <View style={styles.inputRow}>
-            <Text style={styles.label}>Heartbeat interval (s)</Text>
-            <TextInput
-              style={styles.input}
-              value={heartbeatIntervalText}
-              onChangeText={setHeartbeatIntervalText}
-              onBlur={handleSaveHeartbeatInterval}
-              keyboardType="numeric"
-              placeholderTextColor="#6B7280"
-            />
-          </View>
+              <View style={styles.inputRow}>
+                <Text style={styles.label}>Heartbeat interval (s)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={heartbeatIntervalText}
+                  onChangeText={setHeartbeatIntervalText}
+                  onBlur={handleSaveHeartbeatInterval}
+                  keyboardType="numeric"
+                  placeholderTextColor="#6B7280"
+                />
+              </View>
+            </>
+          )}
 
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={async () => {
-              try {
-                await GatewayService.rescanInbox();
-                Alert.alert('Prohledávání', 'Prohledávání příchozích SMS z posledních 30 dní bylo spuštěno.');
-              } catch (e) {
-                Alert.alert('Chyba', 'Nepodařilo se spustit prohledávání.');
-              }
-            }}
-          >
-            <Ionicons name="refresh-outline" size={16} color="#3B82F6" />
-            <Text style={styles.secondaryButtonText}>Znovu prohledat přijaté SMS</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* SMS Limit Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>SMS limit (Android)</Text>
-          <Text style={styles.hintText}>
-            Maximální počet SMS v intervalu před systémovým alertem. Vyžaduje
-            ADB: adb shell pm grant com.varyshop.smsgatewayapp
-            android.permission.WRITE_SECURE_SETTINGS
-          </Text>
-
-          <View style={styles.inputRow}>
-            <Text style={styles.label}>Max SMS v intervalu</Text>
-            <TextInput
-              style={styles.input}
-              value={smsCheckMaxCountText}
-              onChangeText={setSmsCheckMaxCountText}
-              keyboardType="numeric"
-              placeholderTextColor="#6B7280"
-            />
-          </View>
-
-          <View style={styles.inputRow}>
-            <Text style={styles.label}>Interval (s)</Text>
-            <TextInput
-              style={styles.input}
-              value={smsCheckIntervalText}
-              onChangeText={setSmsCheckIntervalText}
-              keyboardType="numeric"
-              placeholderTextColor="#6B7280"
-            />
-          </View>
-
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={handleApplySmsCheckSettings}
-          >
-            <Ionicons name="shield-checkmark-outline" size={18} color="#FFF" />
-            <Text style={styles.primaryButtonText}>Aplikovat</Text>
-          </TouchableOpacity>
-
-          {smsCheckStatus && (
-            <Text
-              style={[
-                styles.hintText,
-                {
-                  marginTop: 8,
-                  color: smsCheckStatus === "Uloženo" ? "#34D399" : "#F87171",
-                },
-              ]}
+          {!settings.simpleMode && (
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={async () => {
+                try {
+                  await GatewayService.rescanInbox();
+                  Alert.alert(
+                    "Prohledávání",
+                    "Prohledávání příchozích SMS z posledních 30 dní bylo spuštěno.",
+                  );
+                } catch (e) {
+                  Alert.alert("Chyba", "Nepodařilo se spustit prohledávání.");
+                }
+              }}
             >
-              {smsCheckStatus}
-            </Text>
+              <Ionicons name="refresh-outline" size={16} color="#3B82F6" />
+              <Text style={styles.secondaryButtonText}>
+                Znovu prohledat přijaté SMS
+              </Text>
+            </TouchableOpacity>
           )}
         </View>
+
+        {/* SMS Limit Section — advanced only */}
+        {!settings.simpleMode && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>SMS limit (Android)</Text>
+            <Text style={styles.hintText}>
+              Maximální počet SMS v intervalu před systémovým alertem. Vyžaduje
+              ADB: adb shell pm grant com.varyshop.smsgatewayapp
+              android.permission.WRITE_SECURE_SETTINGS
+            </Text>
+
+            <View style={styles.inputRow}>
+              <Text style={styles.label}>Max SMS v intervalu</Text>
+              <TextInput
+                style={styles.input}
+                value={smsCheckMaxCountText}
+                onChangeText={setSmsCheckMaxCountText}
+                keyboardType="numeric"
+                placeholderTextColor="#6B7280"
+              />
+            </View>
+
+            <View style={styles.inputRow}>
+              <Text style={styles.label}>Interval (s)</Text>
+              <TextInput
+                style={styles.input}
+                value={smsCheckIntervalText}
+                onChangeText={setSmsCheckIntervalText}
+                keyboardType="numeric"
+                placeholderTextColor="#6B7280"
+              />
+            </View>
+
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={handleApplySmsCheckSettings}
+            >
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={18}
+                color="#FFF"
+              />
+              <Text style={styles.primaryButtonText}>Aplikovat</Text>
+            </TouchableOpacity>
+
+            {smsCheckStatus && (
+              <Text
+                style={[
+                  styles.hintText,
+                  {
+                    marginTop: 8,
+                    color: smsCheckStatus === "Uloženo" ? "#34D399" : "#F87171",
+                  },
+                ]}
+              >
+                {smsCheckStatus}
+              </Text>
+            )}
+          </View>
+        )}
 
         {/* App Version */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>O aplikaci</Text>
           <View style={styles.row}>
             <Text style={styles.label}>Verze</Text>
-            <Text style={styles.value}>{Constants.expoConfig?.version ?? '—'}</Text>
+            <Text style={styles.value}>
+              {Constants.expoConfig?.version ?? "—"}
+            </Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Build</Text>
-            <Text style={styles.value}>{Constants.expoConfig?.android?.versionCode ?? Constants.expoConfig?.extra?.eas?.projectId?.slice(0, 8) ?? '—'}</Text>
+            <Text style={styles.value}>
+              {Constants.expoConfig?.android?.versionCode ??
+                Constants.expoConfig?.extra?.eas?.projectId?.slice(0, 8) ??
+                "—"}
+            </Text>
           </View>
         </View>
       </ScrollView>

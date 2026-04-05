@@ -37,6 +37,7 @@ function ProgressBar({ value, limit, color }: { value: number; limit: number; co
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const [configured, setConfigured] = useState(false);
+  const simpleMode = getSettings().simpleMode;
   const [serviceRunning, setServiceRunning] = useState(false);
   const [nativeServiceRunning, setNativeServiceRunning] = useState(false);
   const [pendingCount, setPendingCount] = useState<Record<string, number>>({});
@@ -164,10 +165,12 @@ export default function DashboardScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>SMS Gateway</Text>
         <View style={{ flexDirection: 'row', gap: 6 }}>
-          <View style={[styles.statusBadge, fcmConnected ? styles.statusOnline : styles.statusOffline]}>
-            <Ionicons name="notifications-outline" size={10} color="#F9FAFB" style={{ marginRight: 4 }} />
-            <Text style={styles.statusText}>{fcmConnected ? 'FCM' : 'Poll'}</Text>
-          </View>
+          {!simpleMode && (
+            <View style={[styles.statusBadge, fcmConnected ? styles.statusOnline : styles.statusOffline]}>
+              <Ionicons name="notifications-outline" size={10} color="#F9FAFB" style={{ marginRight: 4 }} />
+              <Text style={styles.statusText}>{fcmConnected ? 'FCM' : 'Poll'}</Text>
+            </View>
+          )}
           <View style={[styles.statusBadge, (serviceRunning || nativeServiceRunning) ? styles.statusOnline : styles.statusOffline]}>
             <View style={[styles.statusDot, (serviceRunning || nativeServiceRunning) ? styles.dotOnline : styles.dotOffline]} />
             <Text style={styles.statusText}>{(serviceRunning || nativeServiceRunning) ? 'Online' : 'Offline'}</Text>
@@ -252,14 +255,16 @@ export default function DashboardScreen() {
               <ProgressBar value={phone.sent_today} limit={phone.daily_limit} color="#3B82F6" />
             </View>
 
-            {/* Monthly limit */}
-            <View style={styles.limitSection}>
-              <View style={styles.limitHeader}>
-                <Text style={styles.limitLabel}>Měsíční limit</Text>
-                <Text style={styles.limitValue}>{formatLimit(phone.sent_month, phone.monthly_limit)}</Text>
+            {/* Monthly limit — advanced only */}
+            {!simpleMode && (
+              <View style={styles.limitSection}>
+                <View style={styles.limitHeader}>
+                  <Text style={styles.limitLabel}>Měsíční limit</Text>
+                  <Text style={styles.limitValue}>{formatLimit(phone.sent_month, phone.monthly_limit)}</Text>
+                </View>
+                <ProgressBar value={phone.sent_month} limit={phone.monthly_limit} color="#8B5CF6" />
               </View>
-              <ProgressBar value={phone.sent_month} limit={phone.monthly_limit} color="#8B5CF6" />
-            </View>
+            )}
 
             {/* Stats row */}
             <View style={styles.statsRow}>
@@ -273,18 +278,22 @@ export default function DashboardScreen() {
                 <Text style={styles.statValue}>{phone.sent_today}</Text>
                 <Text style={styles.statLabel}>Dnes</Text>
               </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{phone.sent_month}</Text>
-                <Text style={styles.statLabel}>Měsíc</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{phone.sent_total}</Text>
-                <Text style={styles.statLabel}>Celkem</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{phone.rate_limit}/m</Text>
-                <Text style={styles.statLabel}>Rychlost</Text>
-              </View>
+              {!simpleMode && (
+                <>
+                  <View style={styles.statItem}>
+                    <Text style={styles.statValue}>{phone.sent_month}</Text>
+                    <Text style={styles.statLabel}>Měsíc</Text>
+                  </View>
+                  <View style={styles.statItem}>
+                    <Text style={styles.statValue}>{phone.sent_total}</Text>
+                    <Text style={styles.statLabel}>Celkem</Text>
+                  </View>
+                  <View style={styles.statItem}>
+                    <Text style={styles.statValue}>{phone.rate_limit}/m</Text>
+                    <Text style={styles.statLabel}>Rychlost</Text>
+                  </View>
+                </>
+              )}
             </View>
           </View>
         );

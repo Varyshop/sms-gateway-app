@@ -16,19 +16,27 @@ import com.google.firebase.messaging.FirebaseMessaging
 class GatewayServiceModule : Module() {
 
     private var statusReceiver: BroadcastReceiver? = null
+    private var smsResultReceiver: BroadcastReceiver? = null
+    private var statusDb: SmsStatusDb? = null
+
+    private fun getStatusDb(): SmsStatusDb {
+        return statusDb ?: SmsStatusDb(appContext.reactContext!!).also { statusDb = it }
+    }
 
     override fun definition() = ModuleDefinition {
         Name("GatewayService")
 
-        // Declare the event that JS can subscribe to
-        Events("onStatusChange")
+        // Declare the events that JS can subscribe to
+        Events("onStatusChange", "onSmsResult")
 
         OnCreate {
             registerStatusReceiver()
+            registerSmsResultReceiver()
         }
 
         OnDestroy {
             unregisterStatusReceiver()
+            unregisterSmsResultReceiver()
         }
 
         /**
@@ -163,6 +171,31 @@ class GatewayServiceModule : Module() {
         }
 
         /**
+         * Trigger an immediate poll cycle in the native service.
+         */
+        AsyncFunction("triggerImmediatePoll") {
+            val context = appContext.reactContext ?: return@AsyncFunction false
+            SmsGatewayService.triggerImmediatePoll(context)
+            return@AsyncFunction true
+        }
+
+        /**
+         * Get SMS status counts from the persistent SQLite database.
+         * Returns unsynced and total counts for dashboard display.
+         */
+        AsyncFunction("getStatusCounts") {
+            val context = appContext.reactContext ?: return@AsyncFunction mapOf(
+                "unsyncedCount" to 0,
+                "totalCount" to 0,
+            )
+            val db = getStatusDb()
+            return@AsyncFunction mapOf(
+                "unsyncedCount" to db.getUnsyncedCount(),
+                "totalCount" to db.getTotalCount(),
+            )
+        }
+
+        /**
          * Request battery optimization exemption.
          * Opens system dialog asking user to disable battery optimization for this app.
          */
@@ -224,5 +257,37 @@ class GatewayServiceModule : Module() {
             try { context.unregisterReceiver(it) } catch (_: Exception) {}
         }
         statusReceiver = null
+    }
+
+    private fun registerSmsResultReceiver() {
+        val context = appContext.reactContext ?: return
+        smsResultReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                if (intent.action != SmsGatewayService.ACTION_SMS_RESULT) return
+                try {
+                    sendEvent("onSmsResult", mapOf(
+                        "smsId" to intent.getIntExtra("smsId", 0),
+                        "phoneNumber" to (intent.getStringExtra("phoneNumber") ?: ""),
+                        "message" to (intent.getStringExtra("message") ?: ""),
+                        "status" to (intent.getStringExtra("status") ?: ""),
+                        "errorMessage" to (intent.getStringExtra("errorMessage") ?: ""),
+                    ))
+                } catch (_: Exception) {}
+            }
+        }
+        val filter = IntentFilter(SmsGatewayService.ACTION_SMS_RESULT)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(smsResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(smsResultReceiver, filter)
+        }
+    }
+
+    private fun unregisterSmsResultReceiver() {
+        val context = appContext.reactContext ?: return
+        smsResultReceiver?.let {
+            try { context.unregisterReceiver(it) } catch (_: Exception) {}
+        }
+        smsResultReceiver = null
     }
 }
