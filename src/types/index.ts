@@ -128,6 +128,8 @@ export interface CampaignSummary {
   id: number;
   name: string;
   state: string;
+  paused: boolean;
+  active: boolean;
   date_created: string;
   total: number;
   sent: number;
@@ -168,6 +170,8 @@ export interface CampaignStatusResponse {
   id: number;
   name: string;
   state: string;
+  paused: boolean;
+  active: boolean;
   total: number;
   sent: number;
   pending: number;

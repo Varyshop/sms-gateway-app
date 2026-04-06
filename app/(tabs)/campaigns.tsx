@@ -56,10 +56,16 @@ export default function CampaignsScreen() {
 
   // ─── Data fetching ──────────────────────────────
 
+  // List filter state
+  const [showDone, setShowDone] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
   const parseCampaignStatus = (res: any): CampaignSummary => ({
     id: res.id,
     name: res.name,
     state: res.state,
+    paused: res.paused ?? false,
+    active: res.active ?? true,
     date_created: res.created_at,
     total: res.total,
     sent: res.sent,
@@ -95,12 +101,15 @@ export default function CampaignsScreen() {
     const client = getApiClient();
     if (!client) return;
     try {
-      const res = await client.getCampaigns();
+      const res = await client.getCampaigns({
+        include_done: showDone,
+        include_archived: showArchived,
+      });
       if (res.success) setCampaigns(res.campaigns);
     } catch (e) {
       console.error("[Campaigns] Fetch error:", e);
     }
-  }, []);
+  }, [showDone, showArchived]);
 
   useEffect(() => {
     setListLoading(true);
@@ -212,6 +221,8 @@ export default function CampaignsScreen() {
           id: res.campaign_id,
           name: selectedTemplate.name,
           state: res.state || (sendNow ? "sending" : "in_queue"),
+          paused: sendNow ? false : true,
+          active: true,
           date_created: new Date().toISOString(),
           total: res.recipient_count,
           sent: 0,
@@ -303,7 +314,7 @@ export default function CampaignsScreen() {
         const res = await client.getCampaignStatus(campaignId);
         if (res.success) {
           setStatusCampaign(parseCampaignStatus(res));
-          if (res.state === "done" || res.pending === 0) {
+          if (res.state === "done" || res.pending === 0 || res.paused) {
             if (statusPollRef.current) clearInterval(statusPollRef.current);
           }
         }
@@ -366,6 +377,70 @@ export default function CampaignsScreen() {
     } finally {
       setSimAssigning(false);
     }
+  };
+
+  const handlePause = async () => {
+    if (!statusCampaign) return;
+    const client = getApiClient();
+    if (!client) return;
+    try {
+      const res = await client.pauseCampaign(statusCampaign.id);
+      if (res.success) {
+        setStatusCampaign((prev) =>
+          prev ? { ...prev, paused: true } : prev,
+        );
+      }
+    } catch {
+      Alert.alert("Chyba", "Nepodařilo se pozastavit kampaň.");
+    }
+  };
+
+  const handleResume = async () => {
+    if (!statusCampaign) return;
+    const client = getApiClient();
+    if (!client) return;
+    try {
+      const res = await client.resumeCampaign(statusCampaign.id);
+      if (res.success) {
+        setStatusCampaign((prev) =>
+          prev ? { ...prev, state: "sending", paused: false } : prev,
+        );
+        triggerImmediatePoll();
+        startStatusPolling(statusCampaign.id);
+      }
+    } catch {
+      Alert.alert("Chyba", "Nepodařilo se obnovit kampaň.");
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!statusCampaign) return;
+    const client = getApiClient();
+    if (!client) return;
+    Alert.alert(
+      "Archivovat kampaň",
+      "Kampaň bude skryta ze seznamu. Pokračovat?",
+      [
+        { text: "Zrušit", style: "cancel" },
+        {
+          text: "Archivovat",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await client.archiveCampaign(statusCampaign.id);
+              if (res.success) {
+                setStatusCampaign((prev) =>
+                  prev ? { ...prev, active: false } : prev,
+                );
+                goBack();
+              }
+            } catch {
+              Alert.alert("Chyba", "Nepodařilo se archivovat kampaň.");
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleSendNow = async () => {
@@ -465,6 +540,9 @@ export default function CampaignsScreen() {
         onRefreshStatus={refreshStatus}
         onAssignSimAndSend={assignSimAndSend}
         onSendNow={handleSendNow}
+        onPause={handlePause}
+        onResume={handleResume}
+        onArchive={handleArchive}
         onBack={goBack}
       />
     );
@@ -476,6 +554,10 @@ export default function CampaignsScreen() {
       listLoading={listLoading}
       refreshing={refreshing}
       loading={loading}
+      showDone={showDone}
+      showArchived={showArchived}
+      onToggleDone={() => setShowDone((v) => !v)}
+      onToggleArchived={() => setShowArchived((v) => !v)}
       onRefresh={onRefresh}
       onViewCampaign={viewCampaignStatus}
       onStartWizard={startWizard}

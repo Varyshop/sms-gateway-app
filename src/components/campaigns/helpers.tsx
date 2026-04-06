@@ -2,7 +2,8 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { styles } from "./styles";
 
-export function stateLabel(state: string): string {
+export function stateLabel(state: string, paused?: boolean): string {
+  if (paused) return "Pozastaveno";
   switch (state) {
     case "done":
       return "Dokončeno";
@@ -15,7 +16,8 @@ export function stateLabel(state: string): string {
   }
 }
 
-export function stateColor(state: string): string {
+export function stateColor(state: string, paused?: boolean): string {
+  if (paused) return "#F59E0B";
   switch (state) {
     case "done":
       return "#34D399";

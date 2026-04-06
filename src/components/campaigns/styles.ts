@@ -21,6 +21,28 @@ export const styles = StyleSheet.create({
   backBtn: { marginRight: 12, padding: 4 },
   wizardTitle: { fontSize: 20, fontWeight: "bold", color: "#F9FAFB" },
 
+  // Filter chips
+  filterChips: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    gap: 8,
+    marginBottom: 10,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "#1F2937",
+    borderWidth: 1,
+    borderColor: "#374151",
+  },
+  filterChipActive: {
+    backgroundColor: "#2563EB",
+    borderColor: "#2563EB",
+  },
+  filterChipText: { color: "#6B7280", fontSize: 13, fontWeight: "500" },
+  filterChipTextActive: { color: "#FFF" },
+
   // Cards
   card: {
     marginHorizontal: 16,
@@ -136,6 +158,40 @@ export const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sendNowBtnText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
+  pauseBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#DC2626",
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+    marginBottom: 4,
+  },
+  pauseBtnText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
+  resumeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F59E0B",
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+    marginBottom: 4,
+  },
+  resumeBtnText: { color: "#1F2937", fontSize: 16, fontWeight: "700" },
+  archiveBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#374151",
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  archiveBtnText: { color: "#9CA3AF", fontSize: 14, fontWeight: "600" },
   secondaryBtn: {
     alignItems: "center",
     paddingVertical: 12,

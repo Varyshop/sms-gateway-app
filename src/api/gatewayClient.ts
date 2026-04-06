@@ -198,14 +198,29 @@ export class GatewayApiClient {
     });
   }
 
-  async getCampaigns(): Promise<CampaignListResponse> {
-    return this.request<CampaignListResponse>('/sms-gateway/campaign/list');
+  async getCampaigns(opts?: { include_done?: boolean; include_archived?: boolean }): Promise<CampaignListResponse> {
+    return this.request<CampaignListResponse>('/sms-gateway/campaign/list', {
+      include_done: opts?.include_done ?? false,
+      include_archived: opts?.include_archived ?? false,
+    });
   }
 
   async getCampaignStatus(mailingId: number): Promise<CampaignStatusResponse> {
     return this.request<CampaignStatusResponse>(
       `/sms-gateway/campaign/status/${mailingId}`,
     );
+  }
+
+  async pauseCampaign(mailingId: number): Promise<{ success: boolean; state: string; paused: boolean }> {
+    return this.request(`/sms-gateway/campaign/pause/${mailingId}`);
+  }
+
+  async resumeCampaign(mailingId: number): Promise<{ success: boolean; state: string; paused: boolean }> {
+    return this.request(`/sms-gateway/campaign/resume/${mailingId}`);
+  }
+
+  async archiveCampaign(mailingId: number): Promise<{ success: boolean; active: boolean }> {
+    return this.request(`/sms-gateway/campaign/archive/${mailingId}`);
   }
 }
 

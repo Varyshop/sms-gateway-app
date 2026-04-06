@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CampaignSummary } from "../../../src/types";
+import { getSettings } from "../../../src/storage/settings";
 import { styles } from "./styles";
 import { Loader, stateLabel, stateColor } from "./helpers";
 
@@ -17,6 +19,10 @@ interface CampaignListProps {
   listLoading: boolean;
   refreshing: boolean;
   loading: boolean;
+  showDone: boolean;
+  showArchived: boolean;
+  onToggleDone: () => void;
+  onToggleArchived: () => void;
   onRefresh: () => void;
   onViewCampaign: (campaign: CampaignSummary) => void;
   onStartWizard: () => void;
@@ -27,16 +33,42 @@ export function CampaignList({
   listLoading,
   refreshing,
   loading,
+  showDone,
+  showArchived,
+  onToggleDone,
+  onToggleArchived,
   onRefresh,
   onViewCampaign,
   onStartWizard,
 }: CampaignListProps) {
   const insets = useSafeAreaInsets();
+  const simpleMode = getSettings().simpleMode;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Kampaně</Text>
+      </View>
+      {/* Filter chips */}
+      <View style={styles.filterChips}>
+        <TouchableOpacity
+          style={[styles.filterChip, showDone && styles.filterChipActive]}
+          onPress={onToggleDone}
+        >
+          <Text style={[styles.filterChipText, showDone && styles.filterChipTextActive]}>
+            Dokončené
+          </Text>
+        </TouchableOpacity>
+        {!simpleMode && (
+          <TouchableOpacity
+            style={[styles.filterChip, showArchived && styles.filterChipActive]}
+            onPress={onToggleArchived}
+          >
+            <Text style={[styles.filterChipText, showArchived && styles.filterChipTextActive]}>
+              Archivované
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {listLoading ? (
@@ -65,10 +97,10 @@ export function CampaignList({
                 <Text
                   style={[
                     styles.stateBadgeSmall,
-                    { color: stateColor(item.state) },
+                    { color: stateColor(item.state, item.paused) },
                   ]}
                 >
-                  {stateLabel(item.state)}
+                  {stateLabel(item.state, item.paused)}
                 </Text>
               </View>
               <View style={styles.cardStats}>

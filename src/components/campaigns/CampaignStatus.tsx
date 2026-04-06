@@ -28,6 +28,9 @@ interface CampaignStatusProps {
     simNumbers?: string[],
   ) => void;
   onSendNow: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onArchive: () => void;
   onBack: () => void;
 }
 
@@ -41,6 +44,9 @@ export function CampaignStatus({
   onRefreshStatus,
   onAssignSimAndSend,
   onSendNow,
+  onPause,
+  onResume,
+  onArchive,
   onBack,
 }: CampaignStatusProps) {
   const insets = useSafeAreaInsets();
@@ -48,7 +54,10 @@ export function CampaignStatus({
   const progress =
     campaign.total > 0 ? campaign.sent / campaign.total : 0;
   const hasPending = campaign.pending > 0;
-  const showSimPicker = hasPending && !simAssigned && sims.length >= 2;
+  const isSending = campaign.state === "sending" && !campaign.paused;
+  const isPaused = campaign.paused;
+  const isDone = campaign.state === "done";
+  const showSimPicker = hasPending && !simAssigned && sims.length >= 2 && !isPaused;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
@@ -70,10 +79,10 @@ export function CampaignStatus({
             <Text
               style={[
                 styles.stateBadge,
-                { color: stateColor(campaign.state) },
+                { color: stateColor(campaign.state, campaign.paused) },
               ]}
             >
-              {stateLabel(campaign.state)}
+              {stateLabel(campaign.state, campaign.paused)}
             </Text>
           </View>
           <View style={styles.progressBar}>
@@ -263,8 +272,9 @@ export function CampaignStatus({
         )}
 
         <View style={{ paddingHorizontal: 16 }}>
-          {/* Send now button — hidden after successful trigger */}
-          {hasPending && simAssigned && !sendTriggered && (
+          {/* Send now — only when in_queue, not paused, not already triggered */}
+          {hasPending && simAssigned && !sendTriggered && !isPaused &&
+           campaign.state === "in_queue" && (
             <TouchableOpacity
               style={[styles.sendNowBtn, simAssigning && styles.btnDisabled]}
               onPress={onSendNow}
@@ -280,6 +290,40 @@ export function CampaignStatus({
               )}
             </TouchableOpacity>
           )}
+
+          {/* Pause — red, shown when actively sending */}
+          {isSending && hasPending && (
+            <TouchableOpacity
+              style={styles.pauseBtn}
+              onPress={onPause}
+            >
+              <Ionicons name="pause-circle-outline" size={20} color="#FFF" />
+              <Text style={styles.pauseBtnText}>Pozastavit odesílání</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Resume — yellow, shown when paused */}
+          {isPaused && hasPending && (
+            <TouchableOpacity
+              style={styles.resumeBtn}
+              onPress={onResume}
+            >
+              <Ionicons name="play-circle-outline" size={20} color="#1F2937" />
+              <Text style={styles.resumeBtnText}>Pokračovat v odesílání</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Archive — advanced mode only, when done */}
+          {!simpleMode && isDone && campaign.active !== false && (
+            <TouchableOpacity
+              style={styles.archiveBtn}
+              onPress={onArchive}
+            >
+              <Ionicons name="archive-outline" size={18} color="#9CA3AF" />
+              <Text style={styles.archiveBtnText}>Archivovat kampaň</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity style={styles.secondaryBtn} onPress={onBack}>
             <Text style={styles.secondaryBtnText}>Zpět na seznam</Text>
           </TouchableOpacity>
