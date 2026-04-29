@@ -33,7 +33,8 @@
     },
     "plugins": [
       "expo-router",
-      "./modules/gateway-service/app.plugin.js"
+      "./modules/gateway-service/app.plugin.js",
+      "./modules/apk-installer/app.plugin.js"
     ],
     "extra": {
       "eas": {
