@@ -1,4 +1,5 @@
-import * as FileSystem from 'expo-file-system';
+import { Paths, File } from 'expo-file-system';
+import { createDownloadResumable } from 'expo-file-system';
 import { onHeartbeat } from './heartbeatService';
 import { getSettings } from '../storage/settings';
 import { installApk } from '../../modules/apk-installer';
@@ -94,11 +95,12 @@ export async function downloadAndInstall(): Promise<void> {
   notifyListeners();
 
   try {
-    const downloadDest = `${FileSystem.cacheDirectory}sms-gateway-update.apk`;
+    const downloadDest = new File(Paths.cache, 'sms-gateway-update.apk');
+    const destUri = downloadDest.uri;
 
-    const downloadResumable = FileSystem.createDownloadResumable(
+    const downloadResumable = createDownloadResumable(
       url,
-      downloadDest,
+      destUri,
       { headers: { 'X-API-Key': settings.apiKey } },
       (progress) => {
         const pct = progress.totalBytesExpectedToWrite > 0
