@@ -13,6 +13,7 @@ import {
   CampaignStatusResponse,
   CampaignAssignSimResponse,
 } from '../types';
+import Constants from 'expo-constants';
 
 const API_KEY_HEADER = 'X-API-Key';
 const DEFAULT_TIMEOUT = 30000;
@@ -70,6 +71,7 @@ export class GatewayApiClient {
       phone_numbers: phoneNumbers,
       battery_level: batteryLevel,
       signal_strength: signalStrength,
+      app_version: Constants.expoConfig?.android?.versionCode ?? 0,
     });
   }
 

@@ -29,11 +29,22 @@ export interface PhoneCounters {
   sent_total: number;
 }
 
+export interface AppUpdate {
+  available: boolean;
+  version: string;
+  version_code: number;
+  force: boolean;
+  release_notes: string;
+  download_url: string;
+  file_size: number;
+}
+
 export interface HeartbeatResponse {
   success: boolean;
   pending_count: Record<string, number>;
   rate_limit: number;
   phone_stats?: Record<string, PhoneCounters>;
+  app_update?: AppUpdate | null;
 }
 
 export interface PendingSmsResponse {
