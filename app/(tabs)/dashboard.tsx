@@ -15,7 +15,15 @@ import { onHeartbeat, isHeartbeatActive, startHeartbeat, stopHeartbeat } from '.
 import { startSmsQueue, stopSmsQueue, stopSmsQueueFull, isQueueActive } from '../../src/services/smsQueueService';
 import { startInboundSmsListener, stopInboundSmsListener } from '../../src/services/inboundSmsService';
 import GatewayService, { ServiceStatus, onStatusChange } from '../../modules/gateway-service';
-import { HeartbeatResponse, PhoneStats } from '../../src/types';
+import {
+  onUpdateAvailable,
+  onDownloadProgress,
+  downloadAndInstall,
+  isDownloading,
+  isDismissed,
+  dismissUpdate,
+} from '../../src/services/updateService';
+import { HeartbeatResponse, PhoneStats, AppUpdate } from '../../src/types';
 
 function formatLimit(value: number, limit: number): string {
   if (limit === 0) return `${value} / ∞`;
@@ -45,6 +53,10 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fcmConnected, setFcmConnected] = useState(false);
+  const [appUpdate, setAppUpdate] = useState<AppUpdate | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [updateDlProgress, setUpdateDlProgress] = useState(0);
+  const [updateDlActive, setUpdateDlActive] = useState(false);
 
   useEffect(() => {
     setConfigured(isConfigured());
@@ -113,6 +125,23 @@ export default function DashboardScreen() {
       return () => clearInterval(interval);
     }
   }, [configured, fetchStats]);
+
+  useEffect(() => {
+    const unsubUpdate = onUpdateAvailable((update) => {
+      setAppUpdate(update);
+      if (update && !update.force) {
+        setUpdateDismissed(isDismissed());
+      }
+    });
+    const unsubProgress = onDownloadProgress((p) => {
+      setUpdateDlProgress(p);
+      setUpdateDlActive(isDownloading());
+    });
+    return () => {
+      unsubUpdate();
+      unsubProgress();
+    };
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -196,6 +225,37 @@ export default function DashboardScreen() {
       {error && (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+
+      {appUpdate && !appUpdate.force && !updateDismissed && (
+        <View style={styles.updateBanner}>
+          {updateDlActive ? (
+            <>
+              <View style={styles.updateProgressBar}>
+                <View style={[styles.updateProgressFill, { width: `${Math.round(updateDlProgress * 100)}%` }]} />
+              </View>
+              <Text style={styles.updateText}>Stahování… {Math.round(updateDlProgress * 100)} %</Text>
+            </>
+          ) : (
+            <>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.updateText}>Dostupná verze {appUpdate.version}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.updateButton}
+                onPress={downloadAndInstall}
+              >
+                <Text style={styles.updateButtonText}>Aktualizovat</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { dismissUpdate(); setUpdateDismissed(true); }}
+                style={{ paddingHorizontal: 8 }}
+              >
+                <Ionicons name="close" size={18} color="#9CA3AF" />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       )}
 
@@ -500,5 +560,48 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
     paddingHorizontal: 40,
+  },
+
+  // Update banner
+  updateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: '#1E3A5F',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2563EB',
+  },
+  updateText: {
+    color: '#93C5FD',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  updateButton: {
+    backgroundColor: '#2563EB',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  updateButtonText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  updateProgressBar: {
+    flex: 1,
+    height: 6,
+    backgroundColor: '#374151',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginRight: 10,
+  },
+  updateProgressFill: {
+    height: '100%',
+    backgroundColor: '#3B82F6',
+    borderRadius: 3,
   },
 });
