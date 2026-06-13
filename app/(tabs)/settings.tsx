@@ -31,10 +31,6 @@ import {
   clearApiClient,
 } from "../../src/api/gatewayClient";
 import {
-  startHeartbeat,
-  stopHeartbeat,
-} from "../../src/services/heartbeatService";
-import {
   startSmsQueue,
   stopSmsQueue,
   stopSmsQueueFull,
@@ -133,11 +129,9 @@ export default function SettingsScreen() {
     setSettingsState({ ...settings, serviceEnabled: enabled });
 
     if (enabled && isConfigured()) {
-      startHeartbeat();
       startSmsQueue();
       startInboundSmsListener();
     } else {
-      stopHeartbeat();
       await stopSmsQueueFull();
       stopInboundSmsListener();
     }
@@ -170,7 +164,6 @@ export default function SettingsScreen() {
       setHeartbeatInterval(value);
       const newSettings = { ...settings, heartbeatInterval: value };
       setSettingsState(newSettings);
-      // Update native service config
       if (settings.serviceEnabled) {
         GatewayService.updateConfig(
           newSettings.apiUrl,
@@ -179,8 +172,6 @@ export default function SettingsScreen() {
           newSettings.pollingInterval,
           newSettings.heartbeatInterval,
         );
-        stopHeartbeat();
-        startHeartbeat();
       }
     }
   };
@@ -192,7 +183,6 @@ export default function SettingsScreen() {
         text: "Odpojit",
         style: "destructive",
         onPress: async () => {
-          stopHeartbeat();
           await stopSmsQueueFull();
           stopInboundSmsListener();
           clearApiClient();

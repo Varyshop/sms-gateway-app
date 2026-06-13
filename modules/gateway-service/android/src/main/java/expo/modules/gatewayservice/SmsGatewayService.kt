@@ -208,8 +208,9 @@ class SmsGatewayService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var scheduler: ScheduledExecutorService? = null
-    // pollFuture/heartbeatFuture replaced by AlarmManager (MIUI-safe)
     private val executor = Executors.newSingleThreadExecutor()
+    private var hasUnsyncedData = AtomicBoolean(false)
+    private var retroactiveStopPending = true
 
     private lateinit var prefs: SharedPreferences
 
@@ -292,6 +293,7 @@ class SmsGatewayService : Service() {
             }
             ACTION_RESCAN_INBOX -> {
                 Log.i(TAG, "Manual inbox rescan requested")
+                retroactiveStopPending = true
                 executor.execute { retroactiveStopCheck() }
             }
             else -> startGateway()
@@ -352,10 +354,10 @@ class SmsGatewayService : Service() {
         obtainAndRegisterFcmToken()
 
         // Reconcile unsynced statuses with server on startup
-        executor.execute { reconcileWithServer() }
-
-        // Retroactive STOP check
-        executor.execute { retroactiveStopCheck() }
+        executor.execute {
+            reconcileWithServer()
+            if (statusDb.getUnsyncedCount() > 0) hasUnsyncedData.set(true)
+        }
     }
 
     private fun stopGateway() {
@@ -502,6 +504,7 @@ class SmsGatewayService : Service() {
             )
             broadcastSmsResult(tracker.smsId, tracker.phoneNumber, tracker.message, "error", reason)
         }
+        hasUnsyncedData.set(true)
         broadcastStatusChange()
     }
 
@@ -541,8 +544,13 @@ class SmsGatewayService : Service() {
             val key = apiKey
             if (url.isEmpty() || key.isEmpty()) return
 
+            if (!hasUnsyncedData.get()) return
+
             val unsyncedItems = statusDb.getUnsynced(50)
-            if (unsyncedItems.isEmpty()) return
+            if (unsyncedItems.isEmpty()) {
+                hasUnsyncedData.set(false)
+                return
+            }
 
             // Exponential backoff: skip items based on syncAttempts
             // attempt 0-2: always try, 3-5: every ~30s (10 cycles), 6-9: every ~5min, 10+: every ~30min
@@ -657,6 +665,7 @@ class SmsGatewayService : Service() {
             Log.w(TAG, "SMS $smsId: stale tracker resolved as $status " +
                 "(${tracker.sentParts}/${tracker.totalParts} parts reported)")
         }
+        hasUnsyncedData.set(true)
         broadcastStatusChange()
     }
 
@@ -720,7 +729,7 @@ class SmsGatewayService : Service() {
     // Sync + sweep run on ScheduledExecutorService (only when service is awake).
 
     private fun startSchedulers() {
-        scheduler = Executors.newScheduledThreadPool(2)
+        scheduler = Executors.newScheduledThreadPool(1)
 
         // Sync SQLite → server every 3s
         syncFuture = scheduler?.scheduleWithFixedDelay(
@@ -848,11 +857,18 @@ class SmsGatewayService : Service() {
             val success = response.optBoolean("success", false)
             val smsList = response.optJSONArray("sms_list")
 
-            if (!success || smsList == null || smsList.length() == 0) return
+            if (!success || smsList == null || smsList.length() == 0) {
+                if (retroactiveStopPending) {
+                    retroactiveStopPending = false
+                    retroactiveStopCheck()
+                }
+                return
+            }
 
             val count = smsList.length()
             Log.i(TAG, "Found $count pending SMS")
             pendingCount = count
+            retroactiveStopPending = false
             broadcastStatusChange()
 
             val delayMs = if (rateLimit > 0) (60000L / rateLimit).coerceAtLeast(100) else 600L
@@ -921,6 +937,7 @@ class SmsGatewayService : Service() {
             val errorMessage = e.message ?: "Unknown error"
             Log.e(TAG, "Failed to submit SMS $smsId to SmsManager", e)
             statusDb.insertOrUpdate(smsId, "error", errorMessage)
+            hasUnsyncedData.set(true)
             broadcastSmsResult(smsId, phoneNumber, message, "error", errorMessage)
         }
     }
@@ -1233,7 +1250,7 @@ class SmsGatewayService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "SMS Gateway",
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "SMS Gateway naslouchá příchozím a odchozím SMS na pozadí"
                 setShowBadge(false)
@@ -1260,7 +1277,7 @@ class SmsGatewayService : Service() {
             .setSmallIcon(android.R.drawable.ic_dialog_email)
             .setOngoing(true)
             .apply { if (pendingIntent != null) setContentIntent(pendingIntent) }
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 

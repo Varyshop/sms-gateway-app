@@ -5,8 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef, useState } from 'react';
 import { getSettings, isConfigured, preloadStorage } from '../src/storage/settings';
 import { initializeApiClient } from '../src/api/gatewayClient';
-import { startHeartbeat, stopHeartbeat } from '../src/services/heartbeatService';
-import { startSmsQueue, stopSmsQueue, setRateLimit, loadHistory } from '../src/services/smsQueueService';
+import { startSmsQueue, stopSmsQueue, loadHistory } from '../src/services/smsQueueService';
 import { startInboundSmsListener, stopInboundSmsListener } from '../src/services/inboundSmsService';
 import GatewayService from '../modules/gateway-service';
 
@@ -84,8 +83,6 @@ const AppLayout = () => {
         if (isConfigured() && settings.serviceEnabled) {
           // Start native foreground service (survives screen-off)
           startSmsQueue();
-          // JS-side heartbeat (supplement, only runs in foreground)
-          startHeartbeat();
           // JS-side inbound listener (supplement, native receiver handles background)
           startInboundSmsListener();
         }
@@ -99,7 +96,6 @@ const AppLayout = () => {
     initializeServices();
 
     return () => {
-      stopHeartbeat();
       stopSmsQueue();
       stopInboundSmsListener();
       // Note: native foreground service keeps running intentionally

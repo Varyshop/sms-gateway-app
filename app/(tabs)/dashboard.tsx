@@ -11,11 +11,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isConfigured, getSettings, setServiceEnabled } from '../../src/storage/settings';
 import { getApiClient } from '../../src/api/gatewayClient';
-import { onHeartbeat, isHeartbeatActive, startHeartbeat, stopHeartbeat } from '../../src/services/heartbeatService';
 import { startSmsQueue, stopSmsQueue, stopSmsQueueFull, isQueueActive } from '../../src/services/smsQueueService';
 import { startInboundSmsListener, stopInboundSmsListener } from '../../src/services/inboundSmsService';
 import GatewayService, { ServiceStatus, onStatusChange } from '../../modules/gateway-service';
-import { HeartbeatResponse, PhoneStats } from '../../src/types';
+import { PhoneStats } from '../../src/types';
 
 function formatLimit(value: number, limit: number): string {
   if (limit === 0) return `${value} / ∞`;
@@ -40,7 +39,7 @@ export default function DashboardScreen() {
   const simpleMode = getSettings().simpleMode;
   const [serviceRunning, setServiceRunning] = useState(false);
   const [nativeServiceRunning, setNativeServiceRunning] = useState(false);
-  const [pendingCount, setPendingCount] = useState<Record<string, number>>({});
+  const [nativePendingCount, setNativePendingCount] = useState(0);
   const [phoneStats, setPhoneStats] = useState<PhoneStats[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,15 +58,11 @@ export default function DashboardScreen() {
       }
     });
 
-    const unsubscribeHeartbeat = onHeartbeat((response: HeartbeatResponse) => {
-      setPendingCount(response.pending_count);
-    });
-
     // Real-time status updates from native service via EventEmitter
     const statusSubscription = onStatusChange((status: ServiceStatus) => {
       setNativeServiceRunning(status.isRunning);
       setFcmConnected(!!status.fcmToken);
-      // Update phone stats inline from native counters
+      setNativePendingCount(status.pendingCount);
       setPhoneStats((prev) => {
         if (prev.length === 0) return prev;
         return prev.map((phone, i) =>
@@ -86,7 +81,6 @@ export default function DashboardScreen() {
     });
 
     return () => {
-      unsubscribeHeartbeat();
       statusSubscription?.remove();
     };
   }, []);
@@ -109,8 +103,6 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (configured) {
       fetchStats();
-      const interval = setInterval(fetchStats, 30000);
-      return () => clearInterval(interval);
     }
   }, [configured, fetchStats]);
 
@@ -123,12 +115,10 @@ export default function DashboardScreen() {
   const toggleService = async () => {
     if (serviceRunning) {
       await stopSmsQueueFull();
-      stopHeartbeat();
       stopInboundSmsListener();
       setServiceEnabled(false);
     } else {
       setServiceEnabled(true);
-      startHeartbeat();
       startSmsQueue();
       startInboundSmsListener();
     }
@@ -149,8 +139,7 @@ export default function DashboardScreen() {
     );
   }
 
-  // Aggregate totals across all phones
-  const totalPending = Object.values(pendingCount).reduce((a, b) => a + b, 0);
+  const totalPending = nativePendingCount;
   const totalSentToday = phoneStats.reduce((a, p) => a + p.sent_today, 0);
   const totalSentMonth = phoneStats.reduce((a, p) => a + p.sent_month, 0);
   const totalSentAll = phoneStats.reduce((a, p) => a + p.sent_total, 0);
@@ -229,7 +218,7 @@ export default function DashboardScreen() {
 
       {/* Phone Cards */}
       {phoneStats.map((phone) => {
-        const phonePending = pendingCount[phone.phone_number] || 0;
+        const phonePending = totalPending;
 
         return (
           <View key={phone.id} style={styles.phoneCard}>
