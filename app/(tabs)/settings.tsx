@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import Constants from "expo-constants";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -199,11 +199,10 @@ export default function SettingsScreen() {
     setHeartbeatIntervalText(String(getSettings().heartbeatInterval));
   };
 
-  // Refresh settings when returning from QR scanner
-  useEffect(() => {
-    const interval = setInterval(refreshSettings, 2000);
-    return () => clearInterval(interval);
-  }, []);
+  // Refresh settings when screen gains focus (e.g. returning from QR scanner)
+  useFocusEffect(useCallback(() => {
+    refreshSettings();
+  }, []));
 
   return (
     <KeyboardAvoidingView

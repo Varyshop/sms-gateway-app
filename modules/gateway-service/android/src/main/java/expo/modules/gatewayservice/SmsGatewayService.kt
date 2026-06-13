@@ -184,7 +184,10 @@ class SmsGatewayService : Service() {
      * Broadcast status change to GatewayServiceModule → JS EventEmitter.
      * Uses an explicit broadcast so the Expo module can pick it up.
      */
-    private fun broadcastStatusChange() {
+    private fun broadcastStatusChange(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastBroadcastTime < MIN_BROADCAST_INTERVAL_MS) return
+        lastBroadcastTime = now
         try {
             val intent = Intent(ACTION_STATUS_CHANGED).apply {
                 putExtra("isRunning", isRunning)
@@ -211,6 +214,8 @@ class SmsGatewayService : Service() {
     private val executor = Executors.newSingleThreadExecutor()
     private var hasUnsyncedData = AtomicBoolean(false)
     private var retroactiveStopPending = true
+    private var lastBroadcastTime: Long = 0
+    private val MIN_BROADCAST_INTERVAL_MS = 1000L
 
     private lateinit var prefs: SharedPreferences
 
@@ -240,7 +245,7 @@ class SmsGatewayService : Service() {
         val smsId: Int,
         val totalParts: Int,
         val phoneNumber: String = "",
-        val message: String = "",
+        val messagePreview: String = "",
         var sentParts: Int = 0,
         var failedParts: Int = 0,
         var deliveredParts: Int = 0,
@@ -493,7 +498,7 @@ class SmsGatewayService : Service() {
                 tracker.smsId, "sent", null,
                 tracker.totalParts, tracker.sentParts, tracker.failedParts,
             )
-            broadcastSmsResult(tracker.smsId, tracker.phoneNumber, tracker.message, "sent", null)
+            broadcastSmsResult(tracker.smsId, tracker.phoneNumber, tracker.messagePreview, "sent", null)
         } else {
             sessionErrorCount++
             val reason = tracker.failReason ?: "PARTIAL_FAILURE"
@@ -502,7 +507,7 @@ class SmsGatewayService : Service() {
                 tracker.smsId, "error", reason,
                 tracker.totalParts, tracker.sentParts, tracker.failedParts,
             )
-            broadcastSmsResult(tracker.smsId, tracker.phoneNumber, tracker.message, "error", reason)
+            broadcastSmsResult(tracker.smsId, tracker.phoneNumber, tracker.messagePreview, "error", reason)
         }
         hasUnsyncedData.set(true)
         broadcastStatusChange()
@@ -602,7 +607,7 @@ class SmsGatewayService : Service() {
                     dailyLimit = response.optInt("daily_limit", dailyLimit)
                     monthlyLimit = response.optInt("monthly_limit", monthlyLimit)
                     persistCounters()
-                    broadcastStatusChange()
+                    broadcastStatusChange(force = true)
                 }
 
                 val errors = response.optJSONArray("errors")
@@ -661,7 +666,7 @@ class SmsGatewayService : Service() {
                 smsId, status, error,
                 tracker.totalParts, tracker.sentParts, tracker.failedParts,
             )
-            broadcastSmsResult(smsId, tracker.phoneNumber, tracker.message, status, error)
+            broadcastSmsResult(smsId, tracker.phoneNumber, tracker.messagePreview, status, error)
             Log.w(TAG, "SMS $smsId: stale tracker resolved as $status " +
                 "(${tracker.sentParts}/${tracker.totalParts} parts reported)")
         }
@@ -912,8 +917,7 @@ class SmsGatewayService : Service() {
             val parts = smsManager.divideMessage(message)
             val totalParts = parts.size
 
-            // Pre-create tracker
-            deliveryTrackers[smsId] = DeliveryTracker(smsId, totalParts, phoneNumber, message)
+            deliveryTrackers[smsId] = DeliveryTracker(smsId, totalParts, phoneNumber, message.take(80))
 
             if (totalParts == 1) {
                 val sentPI = createSentPendingIntent(smsId, 0, 1)
@@ -1016,7 +1020,7 @@ class SmsGatewayService : Service() {
                 }
 
                 Log.d(TAG, "Heartbeat OK, pending=$pendingCount, today=$sentToday, month=$sentMonth, total=$sentTotal")
-                broadcastStatusChange()
+                broadcastStatusChange(force = true)
 
                 // Safety net: if FCM push didn't arrive but server has pending SMS,
                 // trigger a poll. This covers FCM misconfiguration or network issues.
@@ -1217,8 +1221,8 @@ class SmsGatewayService : Service() {
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("X-API-Key", apiKey)
-            connection.connectTimeout = 30000
-            connection.readTimeout = 30000
+            connection.connectTimeout = 15000
+            connection.readTimeout = 15000
             connection.doOutput = true
 
             OutputStreamWriter(connection.outputStream).use { writer ->
