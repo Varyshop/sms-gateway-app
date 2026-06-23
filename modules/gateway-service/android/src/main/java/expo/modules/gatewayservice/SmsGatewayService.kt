@@ -840,14 +840,9 @@ class SmsGatewayService : Service() {
                 return
             }
 
-            val phoneNumbers = getPhoneNumbers()
-            if (phoneNumbers.isEmpty()) {
-                Log.w(TAG, "No phone numbers available")
-                return
-            }
-
             lastPollTime = System.currentTimeMillis()
 
+            val phoneNumbers = getPhoneNumbers()
             val requestBody = JSONObject().apply {
                 put("phone_numbers", JSONArray(phoneNumbers))
                 put("limit", 20)
@@ -983,10 +978,9 @@ class SmsGatewayService : Service() {
             val key = apiKey
             if (url.isEmpty() || key.isEmpty()) return
 
-            val phoneNumbers = getPhoneNumbers()
-            if (phoneNumbers.isEmpty()) return
-
             lastHeartbeatTime = System.currentTimeMillis()
+
+            val phoneNumbers = getPhoneNumbers()
 
             val body = JSONObject().apply {
                 put("phone_numbers", JSONArray(phoneNumbers))
