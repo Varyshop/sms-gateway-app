@@ -1,37 +1,37 @@
 # Varyshop SMS Gateway App
 
-Expo (React Native) aplikace pro Android. Slouží jako SMS brána pro Odoo — odesílání, příjem, STOP blacklist, FCM push notifikace.
+Expo (React Native) Android application. Works as an SMS gateway for Odoo — sending, receiving, STOP blacklist, FCM push notifications.
 
-[English version](README.en.md)
+[Czech version (Česká verze)](README.cs.md)
 
 ---
 
-## Předpoklady
+## Prerequisites
 
 - Node.js 18+
 - Yarn (`npm install -g yarn`)
-- Android Studio (SDK, emulátor nebo fyzický telefon)
-- EAS CLI (`npm install -g eas-cli`) — pro cloud buildy
-- ADB v PATH (`~/Library/Android/sdk/platform-tools/`)
+- Android Studio (SDK, emulator or physical device)
+- EAS CLI (`npm install -g eas-cli`) — for cloud builds
+- ADB in PATH (`~/Library/Android/sdk/platform-tools/`)
 
 ---
 
-## Build (lokální)
+## Build (local)
 
-### 1. Instalace závislostí
+### 1. Install dependencies
 
 ```bash
 cd extra/sms/sms-gateway-app
 yarn install
 ```
 
-### 2. Prebuild nativního projektu
+### 2. Prebuild native project
 
 ```bash
 yarn prebuild --clean
 ```
 
-> `--clean` smaže a znovu vygeneruje `android/` adresář. Použijte po změně `app.json`, `app.plugin.js` nebo nativních modulů.
+> `--clean` deletes and regenerates the `android/` directory. Use after changing `app.json`, `app.plugin.js`, or native modules.
 
 ### 3. Build release APK
 
@@ -39,15 +39,15 @@ yarn prebuild --clean
 cd android && ./gradlew assembleRelease && cd ..
 ```
 
-Výsledný APK: `android/app/build/outputs/apk/release/app-release.apk`
+Output APK: `android/app/build/outputs/apk/release/app-release.apk`
 
-### 4. Kopírování APK do kořene
+### 4. Copy APK to project root
 
 ```bash
 cp android/app/build/outputs/apk/release/app-release.apk ./app-release.apk
 ```
 
-### Celý build jedním příkazem
+### Full build in one command
 
 ```bash
 yarn install && yarn prebuild --clean && cd android && ./gradlew assembleRelease && cd .. && cp android/app/build/outputs/apk/release/app-release.apk ./app-release.apk
@@ -65,94 +65,94 @@ eas build --profile production-apk --platform android
 eas build --profile production --platform android
 ```
 
-Po dokončení stáhněte APK z odkazu v terminálu nebo z `expo.dev`.
+After completion, download the APK from the link in the terminal or from `expo.dev`.
 
 ---
 
-## Instalace na telefon
+## Install on device
 
-### Přes ADB (doporučeno pro vývoj)
+### Via ADB (recommended for development)
 
 ```bash
-# Ověření připojeného zařízení
+# Verify connected device
 adb devices
 
-# Instalace APK
+# Install APK
 adb install -r app-release.apk
 ```
 
-### Manuálně
+### Manually
 
-1. Přeneste `app-release.apk` na telefon (email, cloud, USB)
-2. Na telefonu otevřete soubor a povolte instalaci z neznámých zdrojů
-3. Po instalaci udělte všechna požadovaná oprávnění (SMS, notifikace, baterie)
+1. Transfer `app-release.apk` to the phone (email, cloud, USB)
+2. Open the file on the phone and allow installation from unknown sources
+3. After installation, grant all requested permissions (SMS, notifications, battery)
 
-### Nastavení SMS limitu (WRITE_SECURE_SETTINGS)
+### SMS limit setting (WRITE_SECURE_SETTINGS)
 
-Android standardně omezuje odesílání na ~30 SMS za 30 minut. Pro hromadné odesílání je nutné zvýšit tento limit. Aplikace to umí udělat sama, ale potřebuje speciální oprávnění `WRITE_SECURE_SETTINGS`, které lze udělit jen přes ADB:
+Android limits sending to ~30 SMS per 30 minutes by default. For bulk sending, this limit needs to be raised. The app can do this automatically, but it requires the special `WRITE_SECURE_SETTINGS` permission, which can only be granted via ADB:
 
 ```bash
-# Připojte telefon přes USB a spusťte:
+# Connect the phone via USB and run:
 yarn grant-permission
 
-# Nebo ručně:
+# Or manually:
 adb shell pm grant com.varyshop.smsgatewayapp android.permission.WRITE_SECURE_SETTINGS
 ```
 
-> Toto oprávnění stačí udělit **jednou** — přežije restart telefonu i reinstalaci aplikace (dokud se nezmění package name).
+> This permission only needs to be granted **once** — it survives phone restarts and app reinstalls (as long as the package name doesn't change).
 
-Po udělení oprávnění nastavte požadovaný limit v aplikaci: **Nastavení > SMS Limit**. Aplikace automaticky zapíše hodnoty do systémových nastavení Androidu (`sms_outgoing_check_max_count` a `sms_outgoing_check_interval_ms`).
+After granting the permission, set the desired limit in the app: **Settings > SMS Limit**. The app will automatically write the values to Android system settings (`sms_outgoing_check_max_count` and `sms_outgoing_check_interval_ms`).
 
-Bez tohoto kroku Android po ~30 SMS zobrazí dialog "Aplikace se pokouší odeslat velké množství SMS" a zablokuje další odesílání.
+Without this step, Android will show a dialog "App is trying to send a large number of SMS" after ~30 SMS and block further sending.
 
-> **Poznámka (Xiaomi/MIUI):** Na některých Xiaomi zařízeních příkaz `pm grant` nefunguje na produkčních buildech bez rootu. V takovém případě snižte v Odoo pole **"SMS per Minute"** na hodnotu 1 (= max 30 SMS za 30 minut, pod systémovým limitem).
+> **Note (Xiaomi/MIUI):** On some Xiaomi devices, the `pm grant` command does not work on production builds without root. In that case, lower the **"SMS per Minute"** field in Odoo to 1 (= max 30 SMS per 30 minutes, under the system limit).
 
-### První spuštění
+### First launch
 
-1. **Oprávnění** — povolte SMS, notifikace (Android 13+)
-2. **Optimalizace baterie** — povolte dialog pro výjimku z optimalizace
-3. **MIUI/Xiaomi** — Nastavení > Aplikace > SMS Gateway > Autostart: zapnout
-4. **SMS limit** — připojte telefon přes USB a spusťte `yarn grant-permission` (viz výše)
-5. **QR párování** — Nastavení > Naskenovat QR kód (z Odoo gateway telefonu)
+1. **Permissions** — allow SMS, notifications (Android 13+)
+2. **Battery optimization** — allow the exemption dialog
+3. **MIUI/Xiaomi** — Settings > Apps > SMS Gateway > Autostart: enable
+4. **SMS limit** — connect the phone via USB and run `yarn grant-permission` (see above)
+5. **QR pairing** — Settings > Scan QR code (from Odoo gateway phone record)
 
 ---
 
 ## GitHub Release
 
-### 1. Commitněte změny
+### 1. Commit changes
 
 ```bash
 cd extra/sms/sms-gateway-app
 git add -A
-git commit -m "feat: popis změn"
+git commit -m "feat: description of changes"
 ```
 
-### 2. Vytvořte release s APK
+### 2. Create release with APK
 
 ```bash
 gh release create v1.x.x ./app-release.apk \
   --repo Varyshop/sms-gateway-app \
-  --title "v1.x.x — Popis verze" \
+  --title "v1.x.x — Version description" \
   --notes "$(cat <<'EOF'
-## Změny
+## Changes
 
-- Popis změn 1
-- Popis změn 2
+- Change 1
+- Change 2
 
-## Instalace
+## Installation
 
-Stáhněte `app-release.apk` a nainstalujte na Android zařízení.
+Download `app-release.apk` and install on an Android device.
 EOF
 )"
 ```
 
-### 3. Pushněte kód
+### 3. Push code
 
 ```bash
 git push origin master
 ```
 
-### 4. Aktualizujte submodul v hlavním repu
+### 4. Update submodule in main repo
 
 ```bash
 cd /Volumes/ext-msi/projects/my-projects/varyshop.eu
@@ -162,40 +162,40 @@ git commit -m "chore: update sms submodule (vX.X.X)"
 
 ---
 
-## Důležité poznámky
+## Important notes
 
-- **APK je v .gitignore** — nikdy ho necommitujte do repa, nahrávejte pouze jako GitHub Release asset
-- **`yarn prebuild --clean`** je nutný po každé změně v:
-  - `app.json` (oprávnění, plugins)
+- **APK is in .gitignore** — never commit it to the repo, upload only as a GitHub Release asset
+- **`yarn prebuild --clean`** is required after any change in:
+  - `app.json` (permissions, plugins)
   - `modules/gateway-service/app.plugin.js` (manifest inject)
-  - Nativním Kotlin kódu v `modules/`
-- **Signing** — release build používá debug keystore. Pro produkci nastavte vlastní keystore v `android/app/build.gradle`
-- **Verze** — zvyšte `version` v `app.json` před každým release
+  - Native Kotlin code in `modules/`
+- **Signing** — release build uses debug keystore. For production, set up your own keystore in `android/app/build.gradle`
+- **Version** — bump `version` in `app.json` before each release
 
 ---
 
-## ADB užitečné příkazy
+## Useful ADB commands
 
 ```bash
-# Logy aplikace
+# App logs
 adb logcat --pid=$(adb shell pidof com.varyshop.smsgatewayapp)
 
-# Filtr na SMS Gateway service
+# Filter SMS Gateway service logs
 adb logcat --pid=$(adb shell pidof com.varyshop.smsgatewayapp) | grep -i "SmsGateway\|FCM\|Heartbeat\|InboundSms"
 
-# Zvýšení SMS limitu (nutné pro větší objemy)
+# Increase SMS limit (needed for higher volumes)
 adb shell settings put global sms_outgoing_check_max_count 10000
 
-# Kontrola battery optimization
+# Check battery optimization
 adb shell dumpsys deviceidle whitelist | grep varyshop
 
-# Force stop a restart
+# Force stop and restart
 adb shell am force-stop com.varyshop.smsgatewayapp
 adb shell am start -n com.varyshop.smsgatewayapp/.MainActivity
 ```
 
 ---
 
-## Kontakt
+## Contact
 
-V případě dotazů kontaktujte info@varyshop.eu nebo přímo vývojáře info@michalvarys.eu
+For questions contact info@varyshop.eu or the developer directly at info@michalvarys.eu
