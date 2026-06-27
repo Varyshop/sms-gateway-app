@@ -44,5 +44,5 @@
     "grant-permission": "adb shell pm grant com.varyshop.smsgatewayapp android.permission.WRITE_SECURE_SETTINGS",
     "prebuild": "expo prebuild --platform android"
   },
-  "version": "1.0.0"
+  "version": "1.7.0"
 }
