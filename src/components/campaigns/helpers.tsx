@@ -1,16 +1,17 @@
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { t } from '../../i18n';
 import { styles } from "./styles";
 
 export function stateLabel(state: string, paused?: boolean): string {
-  if (paused) return "Pozastaveno";
+  if (paused) return t().campaignState.paused;
   switch (state) {
     case "done":
-      return "Dokončeno";
+      return t().campaignState.done;
     case "sending":
-      return "Odesílá se";
+      return t().campaignState.sending;
     case "in_queue":
-      return "Ve frontě";
+      return t().campaignState.inQueue;
     default:
       return state;
   }

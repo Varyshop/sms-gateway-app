@@ -13,19 +13,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getApiClient } from '../../src/api/gatewayClient';
 import { InboundSmsItem } from '../../src/types';
+import { t, onLocaleChange } from '../../src/i18n';
 
 type Filter = 'all' | 'stop' | 'stop_not_blacklisted';
 
 const PAGE_SIZE = 50;
 
-const FILTER_LABELS: Record<Filter, string> = {
-  all: 'Vše',
-  stop: 'STOP',
-  stop_not_blacklisted: 'Neblokované',
-};
-
 export default function InboundScreen() {
   const insets = useSafeAreaInsets();
+  const [, setLangTick] = useState(0);
+  useEffect(() => onLocaleChange(() => setLangTick(n => n + 1)), []);
+
   const [messages, setMessages] = useState<InboundSmsItem[]>([]);
   const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<Filter>('all');
@@ -93,12 +91,12 @@ export default function InboundScreen() {
     if (!client || selected.size === 0) return;
 
     Alert.alert(
-      'Přidat na blacklist',
-      `Opravdu chcete přidat ${selected.size} čísel na blacklist?`,
+      t().inbound.blacklist.title,
+      t().inbound.blacklist.confirmMulti(selected.size),
       [
-        { text: 'Zrušit', style: 'cancel' },
+        { text: t().common.cancel, style: 'cancel' },
         {
-          text: 'Přidat',
+          text: t().inbound.blacklist.add,
           style: 'destructive',
           onPress: async () => {
             setBlacklisting(true);
@@ -107,10 +105,10 @@ export default function InboundScreen() {
               if (res.success) {
                 setSelected(new Set());
                 await fetchMessages(0, false);
-                Alert.alert('Hotovo', `Přidáno ${res.blacklisted} čísel na blacklist`);
+                Alert.alert(t().common.done, t().inbound.blacklist.successMulti(res.blacklisted));
               }
             } catch (e) {
-              Alert.alert('Chyba', 'Nepodařilo se přidat na blacklist');
+              Alert.alert(t().common.error, t().inbound.blacklist.error);
             } finally {
               setBlacklisting(false);
             }
@@ -125,12 +123,12 @@ export default function InboundScreen() {
     if (!client) return;
 
     Alert.alert(
-      'Přidat na blacklist',
-      `Přidat ${item.from_number} na blacklist?`,
+      t().inbound.blacklist.title,
+      t().inbound.blacklist.confirmSingle(item.from_number),
       [
-        { text: 'Zrušit', style: 'cancel' },
+        { text: t().common.cancel, style: 'cancel' },
         {
-          text: 'Přidat',
+          text: t().inbound.blacklist.add,
           style: 'destructive',
           onPress: async () => {
             try {
@@ -141,7 +139,7 @@ export default function InboundScreen() {
                 );
               }
             } catch (e) {
-              Alert.alert('Chyba', 'Nepodařilo se přidat na blacklist');
+              Alert.alert(t().common.error, t().inbound.blacklist.error);
             }
           },
         },
@@ -199,12 +197,12 @@ export default function InboundScreen() {
         ) : null}
         {item.blacklisted ? (
           <Text style={styles.blacklisted}>
-            <Ionicons name="checkmark-circle" size={11} color="#F87171" /> Na blacklistu
+            <Ionicons name="checkmark-circle" size={11} color="#F87171" /> {t().inbound.onBlacklist}
           </Text>
         ) : item.is_stop ? (
           <TouchableOpacity onPress={() => blacklistSingle(item)} style={styles.blacklistBtn}>
             <Ionicons name="ban-outline" size={13} color="#FBBF24" />
-            <Text style={styles.blacklistBtnText}>Přidat na blacklist</Text>
+            <Text style={styles.blacklistBtnText}>{t().inbound.addToBlacklist}</Text>
           </TouchableOpacity>
         ) : null}
       </TouchableOpacity>
@@ -216,8 +214,8 @@ export default function InboundScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Příchozí SMS</Text>
-        <Text style={styles.count}>{total} celkem</Text>
+        <Text style={styles.title}>{t().inbound.title}</Text>
+        <Text style={styles.count}>{t().inbound.totalCount(total)}</Text>
       </View>
 
       <View style={styles.filterRow}>
@@ -228,7 +226,7 @@ export default function InboundScreen() {
             onPress={() => setFilter(f)}
           >
             <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-              {FILTER_LABELS[f]}
+              {f === 'all' ? t().common.filter.all : f === 'stop' ? 'STOP' : t().inbound.filter.notBlacklisted}
             </Text>
           </TouchableOpacity>
         ))}
@@ -241,7 +239,7 @@ export default function InboundScreen() {
             <TouchableOpacity onPress={selectAll} style={styles.bulkBtn}>
               <Ionicons name="checkbox-outline" size={16} color="#9CA3AF" />
               <Text style={styles.bulkBtnText}>
-                {selected.size > 0 ? `Vybrano (${selected.size})` : 'Vybrat vše'}
+                {selected.size > 0 ? t().inbound.selectedCount(selected.size) : t().inbound.selectAll}
               </Text>
             </TouchableOpacity>
           )}
@@ -269,7 +267,7 @@ export default function InboundScreen() {
       {initialLoading ? (
         <View style={styles.emptyState}>
           <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.emptyText}>Načítám...</Text>
+          <Text style={styles.emptyText}>{t().common.loading}</Text>
         </View>
       ) : (
         <FlatList
@@ -288,8 +286,8 @@ export default function InboundScreen() {
               <Ionicons name="mail-open-outline" size={48} color="#6B7280" />
               <Text style={styles.emptyText}>
                 {filter === 'stop_not_blacklisted'
-                  ? 'Žádné neblokované STOP zprávy'
-                  : 'Žádné příchozí SMS'}
+                  ? t().inbound.noUnblockedStop
+                  : t().inbound.noInbound}
               </Text>
             </View>
           }

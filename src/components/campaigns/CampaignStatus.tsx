@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,6 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { t, onLocaleChange } from '../../i18n';
 import { SimCardInfo, getSimDisplayString } from "../../../modules/sim-manager";
 import { CampaignSummary } from "../../../src/types";
 import { getSettings } from "../../../src/storage/settings";
@@ -51,6 +53,8 @@ export function CampaignStatus({
 }: CampaignStatusProps) {
   const insets = useSafeAreaInsets();
   const simpleMode = getSettings().simpleMode;
+  const [, setLangTick] = useState(0);
+  useEffect(() => onLocaleChange(() => setLangTick(n => n + 1)), []);
   const progress =
     campaign.total > 0 ? campaign.sent / campaign.total : 0;
   const hasPending = campaign.pending > 0;
@@ -61,7 +65,7 @@ export function CampaignStatus({
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-      <Header title="Stav kampaně" onBack={onBack} />
+      <Header title={t().campaignStatus.title} onBack={onBack} />
       <ScrollView
         contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
         refreshControl={
@@ -91,10 +95,10 @@ export function CampaignStatus({
             />
           </View>
           <View style={styles.statsGrid}>
-            <StatBox label="Celkem" value={campaign.total} color="#F9FAFB" />
-            <StatBox label="Odesláno" value={campaign.sent} color="#34D399" />
-            <StatBox label="Čeká" value={campaign.pending} color="#FBBF24" />
-            <StatBox label="Chyba" value={campaign.error} color="#F87171" />
+            <StatBox label={t().campaignStatus.total} value={campaign.total} color="#F9FAFB" />
+            <StatBox label={t().campaignStatus.sent} value={campaign.sent} color="#34D399" />
+            <StatBox label={t().campaignStatus.pending} value={campaign.pending} color="#FBBF24" />
+            <StatBox label={t().campaignStatus.error} value={campaign.error} color="#F87171" />
           </View>
         </View>
 
@@ -103,14 +107,14 @@ export function CampaignStatus({
           <View style={styles.summaryCard}>
             {campaign.body_plaintext ? (
               <>
-                <Text style={styles.summaryLabel}>Text SMS:</Text>
+                <Text style={styles.summaryLabel}>{t().campaignStatus.smsText}</Text>
                 <Text style={styles.detailBody} numberOfLines={4}>
                   {campaign.body_plaintext}
                 </Text>
               </>
             ) : null}
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>STOP zpráva:</Text>
+              <Text style={styles.detailLabel}>{t().campaignStatus.stopMessage}</Text>
               <Text
                 style={[
                   styles.detailValue,
@@ -121,20 +125,20 @@ export function CampaignStatus({
                   },
                 ]}
               >
-                {campaign.sms_allow_unsubscribe ? "Ano" : "Ne"}
+                {campaign.sms_allow_unsubscribe ? t().common.yes : t().common.no}
               </Text>
             </View>
             {(campaign.exclude_contacted_days ?? 0) > 0 && (
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Vynechává kontaktované:</Text>
+                <Text style={styles.detailLabel}>{t().campaignStatus.excludesContacted}</Text>
                 <Text style={styles.detailValue}>
-                  {campaign.exclude_contacted_days} dní
+                  {t().campaignStatus.days(campaign.exclude_contacted_days ?? 0)}
                 </Text>
               </View>
             )}
             {campaign.sent_date ? (
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Datum odeslání:</Text>
+                <Text style={styles.detailLabel}>{t().campaignStatus.sentDate}</Text>
                 <Text style={styles.detailValue}>
                   {new Date(campaign.sent_date).toLocaleString("cs-CZ", {
                     day: "2-digit",
@@ -155,34 +159,34 @@ export function CampaignStatus({
           campaign.order_count > 0 ||
           campaign.optout > 0) && (
           <View style={styles.summaryCard}>
-            <Text style={styles.marketingTitle}>Výsledky kampaně</Text>
+            <Text style={styles.marketingTitle}>{t().campaignStatus.results}</Text>
             <View style={styles.divider} />
             <View style={styles.statsGrid}>
               <StatBox
-                label="Kliknulo"
+                label={t().campaignStatus.clicked}
                 value={campaign.clicked}
                 color="#60A5FA"
               />
               <StatBox
-                label="Objednávky"
+                label={t().campaignStatus.orders}
                 value={campaign.order_count}
                 color="#A78BFA"
               />
               <StatBox
-                label="Odhlášeno"
+                label={t().campaignStatus.unsubscribed}
                 value={campaign.optout}
                 color="#F87171"
               />
             </View>
             {campaign.revenue > 0 && (
               <View style={styles.revenueRow}>
-                <Text style={styles.revenueLabel}>Příjem z kampaně</Text>
+                <Text style={styles.revenueLabel}>{t().campaignStatus.campaignRevenue}</Text>
                 <Text style={styles.revenueValue}>
                   {campaign.revenue.toLocaleString("cs-CZ", {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 0,
                   })}{" "}
-                  Kč
+                  {t().common.currency}
                 </Text>
               </View>
             )}
@@ -194,13 +198,13 @@ export function CampaignStatus({
                 </Text>
                 {campaign.order_count > 0 && (
                   <Text style={styles.ratioText}>
-                    Konverze:{" "}
+                    {t().campaignStatus.conversion}{" "}
                     {((campaign.order_count / campaign.sent) * 100).toFixed(1)}%
                   </Text>
                 )}
                 {campaign.optout > 0 && (
                   <Text style={[styles.ratioText, { color: "#F87171" }]}>
-                    Odhlášení:{" "}
+                    {t().campaignStatus.unsubscribedRate}{" "}
                     {((campaign.optout / campaign.sent) * 100).toFixed(1)}%
                   </Text>
                 )}
@@ -213,7 +217,7 @@ export function CampaignStatus({
         {showSimPicker && (
           <View style={styles.simPickerCard}>
             <Text style={styles.simPickerTitle}>
-              Vyberte SIM pro odeslání
+              {t().campaignStatus.selectSim}
             </Text>
             {sims.map((sim) => (
               <TouchableOpacity
@@ -262,7 +266,7 @@ export function CampaignStatus({
                       color="#FFF"
                     />
                     <Text style={styles.simBtnText}>
-                      Rozdělit mezi obě SIM
+                      {t().campaignStatus.splitBetweenSims}
                     </Text>
                   </>
                 )}
@@ -285,7 +289,7 @@ export function CampaignStatus({
               ) : (
                 <>
                   <Ionicons name="flash-outline" size={20} color="#FFF" />
-                  <Text style={styles.sendNowBtnText}>Odeslat ihned</Text>
+                  <Text style={styles.sendNowBtnText}>{t().campaignStatus.sendNow}</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -298,7 +302,7 @@ export function CampaignStatus({
               onPress={onPause}
             >
               <Ionicons name="pause-circle-outline" size={20} color="#FFF" />
-              <Text style={styles.pauseBtnText}>Pozastavit odesílání</Text>
+              <Text style={styles.pauseBtnText}>{t().campaignStatus.pauseSending}</Text>
             </TouchableOpacity>
           )}
 
@@ -309,7 +313,7 @@ export function CampaignStatus({
               onPress={onResume}
             >
               <Ionicons name="play-circle-outline" size={20} color="#1F2937" />
-              <Text style={styles.resumeBtnText}>Pokračovat v odesílání</Text>
+              <Text style={styles.resumeBtnText}>{t().campaignStatus.resumeSending}</Text>
             </TouchableOpacity>
           )}
 
@@ -320,12 +324,12 @@ export function CampaignStatus({
               onPress={onArchive}
             >
               <Ionicons name="archive-outline" size={18} color="#9CA3AF" />
-              <Text style={styles.archiveBtnText}>Archivovat kampaň</Text>
+              <Text style={styles.archiveBtnText}>{t().campaignStatus.archiveCampaign}</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity style={styles.secondaryBtn} onPress={onBack}>
-            <Text style={styles.secondaryBtnText}>Zpět na seznam</Text>
+            <Text style={styles.secondaryBtnText}>{t().campaignStatus.backToList}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

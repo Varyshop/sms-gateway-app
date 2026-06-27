@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
+import { t, onLocaleChange } from "../../src/i18n";
 import { getApiClient } from "../../src/api/gatewayClient";
 import SimManager, { SimCardInfo } from "../../modules/sim-manager";
 import { triggerImmediatePoll } from "../../src/services/smsQueueService";
@@ -19,6 +20,9 @@ import { CampaignStatus } from "../../src/components/campaigns/CampaignStatus";
 type Screen = "list" | "step1" | "step2" | "step3" | "status";
 
 export default function CampaignsScreen() {
+  const [, setLangTick] = useState(0);
+  useEffect(() => onLocaleChange(() => setLangTick(n => n + 1)), []);
+
   const [screen, setScreen] = useState<Screen>("list");
 
   // List state
@@ -146,12 +150,12 @@ export default function CampaignsScreen() {
         setScreen("step1");
       } else {
         Alert.alert(
-          "Žádné šablony",
-          "Nejsou nastavené žádné SMS šablony pro tento telefon.",
+          t().campaigns.noTemplates.title,
+          t().campaigns.noTemplates.message,
         );
       }
     } catch {
-      Alert.alert("Chyba", "Nepodařilo se načíst šablony.");
+      Alert.alert(t().common.error, t().campaigns.loadTemplates.error);
     } finally {
       setLoading(false);
     }
@@ -170,7 +174,7 @@ export default function CampaignsScreen() {
         setScreen("step2");
       }
     } catch {
-      Alert.alert("Chyba", "Nepodařilo se načíst filtry.");
+      Alert.alert(t().common.error, t().campaigns.loadFilters.error);
     } finally {
       setLoading(false);
     }
@@ -194,7 +198,7 @@ export default function CampaignsScreen() {
         setScreen("step3");
       }
     } catch {
-      Alert.alert("Chyba", "Nepodařilo se načíst náhled.");
+      Alert.alert(t().common.error, t().campaigns.loadPreview.error);
     } finally {
       setLoading(false);
     }
@@ -276,7 +280,7 @@ export default function CampaignsScreen() {
         }
       }
     } catch {
-      Alert.alert("Chyba", "Nepodařilo se vytvořit kampaň.");
+      Alert.alert(t().common.error, t().campaigns.createCampaign.error);
     } finally {
       setLoading(false);
     }
@@ -286,17 +290,17 @@ export default function CampaignsScreen() {
     if (!selectedTemplate || !selectedFilter) return;
     const bodyChanged = editedBody.trim() !== previewText.trim();
     Alert.alert(
-      "Vytvořit kampaň",
-      `SMS "${selectedTemplate.name}" pro ${previewCount} příjemců${bodyChanged ? "\n\n(Text SMS byl upraven)" : ""}`,
+      t().campaigns.createCampaign.title,
+      t().campaigns.confirmMessage(selectedTemplate.name, previewCount, bodyChanged),
       [
-        { text: "Zrušit", style: "cancel" },
+        { text: t().common.cancel, style: "cancel" },
         {
-          text: "Do fronty",
+          text: t().campaigns.toQueue,
           style: "default",
           onPress: () => doCreateCampaign(false),
         },
         {
-          text: "Odeslat ihned",
+          text: t().campaigns.sendNow,
           onPress: () => doCreateCampaign(true),
         },
       ],
@@ -373,7 +377,7 @@ export default function CampaignsScreen() {
       setSendTriggered(true);
       triggerImmediatePoll();
     } catch {
-      Alert.alert("Chyba", "Nepodařilo se přiřadit SIM.");
+      Alert.alert(t().common.error, t().campaigns.assignSim.error);
     } finally {
       setSimAssigning(false);
     }
@@ -391,7 +395,7 @@ export default function CampaignsScreen() {
         );
       }
     } catch {
-      Alert.alert("Chyba", "Nepodařilo se pozastavit kampaň.");
+      Alert.alert(t().common.error, t().campaigns.pauseCampaign.error);
     }
   };
 
@@ -409,7 +413,7 @@ export default function CampaignsScreen() {
         startStatusPolling(statusCampaign.id);
       }
     } catch {
-      Alert.alert("Chyba", "Nepodařilo se obnovit kampaň.");
+      Alert.alert(t().common.error, t().campaigns.resumeCampaign.error);
     }
   };
 
@@ -418,12 +422,12 @@ export default function CampaignsScreen() {
     const client = getApiClient();
     if (!client) return;
     Alert.alert(
-      "Archivovat kampaň",
-      "Kampaň bude skryta ze seznamu. Pokračovat?",
+      t().campaigns.archive.title,
+      t().campaigns.archive.message,
       [
-        { text: "Zrušit", style: "cancel" },
+        { text: t().common.cancel, style: "cancel" },
         {
-          text: "Archivovat",
+          text: t().campaigns.archive.confirm,
           style: "destructive",
           onPress: async () => {
             try {
@@ -435,7 +439,7 @@ export default function CampaignsScreen() {
                 goBack();
               }
             } catch {
-              Alert.alert("Chyba", "Nepodařilo se archivovat kampaň.");
+              Alert.alert(t().common.error, t().campaigns.archiveCampaign.error);
             }
           },
         },

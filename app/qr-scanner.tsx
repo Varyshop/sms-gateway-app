@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
+import { t, onLocaleChange } from '../src/i18n';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +16,9 @@ import { getFcmToken } from '../modules/gateway-service';
 import { QrCodeData } from '../src/types';
 
 export default function QrScannerScreen() {
+  const [, setLangTick] = useState(0);
+  useEffect(() => onLocaleChange(() => setLangTick(n => n + 1)), []);
+
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
@@ -27,14 +31,14 @@ export default function QrScannerScreen() {
       const parsed: QrCodeData = JSON.parse(data);
 
       if (parsed.type !== 'sms_gateway') {
-        Alert.alert('Neplatný QR kód', 'Tento QR kód není určen pro SMS Gateway aplikaci.', [
+        Alert.alert(t().qrScanner.invalidQr.title, t().qrScanner.invalidQr.notGateway, [
           { text: 'OK', onPress: () => setScanned(false) },
         ]);
         return;
       }
 
       if (!parsed.url || !parsed.api_key) {
-        Alert.alert('Neplatný QR kód', 'QR kód neobsahuje potřebné údaje.', [
+        Alert.alert(t().qrScanner.invalidQr.title, t().qrScanner.invalidQr.missingData, [
           { text: 'OK', onPress: () => setScanned(false) },
         ]);
         return;
@@ -60,12 +64,12 @@ export default function QrScannerScreen() {
       }
 
       Alert.alert(
-        'Spárováno',
-        `Úspěšně připojeno k ${parsed.url}`,
+        t().qrScanner.paired.title,
+        t().qrScanner.paired.message(parsed.url),
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error) {
-      Alert.alert('Chyba', 'Nepodařilo se přečíst QR kód.', [
+      Alert.alert(t().common.error, t().qrScanner.readError, [
         { text: 'OK', onPress: () => setScanned(false) },
       ]);
     }
@@ -74,7 +78,7 @@ export default function QrScannerScreen() {
   if (!permission) {
     return (
       <View style={styles.container}>
-        <Text style={styles.text}>Načítám kameru...</Text>
+        <Text style={styles.text}>{t().qrScanner.loadingCamera}</Text>
       </View>
     );
   }
@@ -83,12 +87,12 @@ export default function QrScannerScreen() {
     return (
       <View style={styles.container}>
         <Ionicons name="camera-outline" size={64} color="#6B7280" />
-        <Text style={styles.text}>Potřebujeme přístup ke kameře</Text>
+        <Text style={styles.text}>{t().qrScanner.cameraPermission}</Text>
         <TouchableOpacity style={styles.button} onPress={requestPermission}>
-          <Text style={styles.buttonText}>Povolit kameru</Text>
+          <Text style={styles.buttonText}>{t().qrScanner.allowCamera}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
-          <Text style={styles.cancelText}>Zrušit</Text>
+          <Text style={styles.cancelText}>{t().common.cancel}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -116,7 +120,7 @@ export default function QrScannerScreen() {
           </View>
 
           <Text style={styles.instruction}>
-            Nasměrujte kameru na QR kód v Odoo
+            {t().qrScanner.instruction}
           </Text>
         </View>
       </CameraView>

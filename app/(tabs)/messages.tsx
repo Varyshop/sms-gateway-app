@@ -16,17 +16,12 @@ import { getApiClient } from '../../src/api/gatewayClient';
 import { getSmsHistory, onHistoryChange } from '../../src/services/smsQueueService';
 import GatewayService from '../../modules/gateway-service';
 import { InboundSmsItem, SmsHistoryItem } from '../../src/types';
+import { t, onLocaleChange } from '../../src/i18n';
 
 // ---- Types ----
 
 type Direction = 'outbound' | 'inbound';
 type InboundFilter = 'all' | 'stop' | 'stop_not_blacklisted';
-
-const INBOUND_FILTER_LABELS: Record<InboundFilter, string> = {
-  all: 'Vše',
-  stop: 'STOP',
-  stop_not_blacklisted: 'Neblokované',
-};
 
 type OutboundFilter = 'all' | 'sent' | 'error';
 
@@ -36,6 +31,9 @@ const PAGE_SIZE = 50;
 
 export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
+  const [, setLangTick] = useState(0);
+  useEffect(() => onLocaleChange(() => setLangTick(n => n + 1)), []);
+
   const [direction, setDirection] = useState<Direction>('outbound');
 
   const [search, setSearch] = useState('');
@@ -134,12 +132,12 @@ export default function MessagesScreen() {
     const client = getApiClient();
     if (!client || selected.size === 0) return;
     Alert.alert(
-      'Přidat na blacklist',
-      `Opravdu chcete přidat ${selected.size} čísel na blacklist?`,
+      t().messages.blacklist.title,
+      t().messages.blacklist.confirmMulti(selected.size),
       [
-        { text: 'Zrušit', style: 'cancel' },
+        { text: t().common.cancel, style: 'cancel' },
         {
-          text: 'Přidat', style: 'destructive',
+          text: t().messages.blacklist.add, style: 'destructive',
           onPress: async () => {
             setBlacklisting(true);
             try {
@@ -147,9 +145,9 @@ export default function MessagesScreen() {
               if (res.success) {
                 setSelected(new Set());
                 await fetchInbound(0, false);
-                Alert.alert('Hotovo', `Přidáno ${res.blacklisted} čísel na blacklist`);
+                Alert.alert(t().common.done, t().messages.blacklist.successMulti(res.blacklisted));
               }
-            } catch { Alert.alert('Chyba', 'Nepodařilo se přidat na blacklist'); }
+            } catch { Alert.alert(t().common.error, t().messages.blacklist.error); }
             finally { setBlacklisting(false); }
           },
         },
@@ -161,12 +159,12 @@ export default function MessagesScreen() {
     const client = getApiClient();
     if (!client) return;
     Alert.alert(
-      'Přidat na blacklist',
-      `Přidat ${item.from_number} na blacklist?`,
+      t().messages.blacklist.title,
+      t().messages.blacklist.confirmSingle(item.from_number),
       [
-        { text: 'Zrušit', style: 'cancel' },
+        { text: t().common.cancel, style: 'cancel' },
         {
-          text: 'Přidat', style: 'destructive',
+          text: t().messages.blacklist.add, style: 'destructive',
           onPress: async () => {
             try {
               const res = await client.blacklistInbound([item.id]);
@@ -175,7 +173,7 @@ export default function MessagesScreen() {
                   prev.map((m) => m.id === item.id ? { ...m, blacklisted: true } : m)
                 );
               }
-            } catch { Alert.alert('Chyba', 'Nepodařilo se přidat na blacklist'); }
+            } catch { Alert.alert(t().common.error, t().messages.blacklist.error); }
           },
         },
       ],
@@ -252,12 +250,12 @@ export default function MessagesScreen() {
         {item.partner_name ? <Text style={styles.partner}>{item.partner_name}</Text> : null}
         {item.blacklisted ? (
           <Text style={styles.blacklisted}>
-            <Ionicons name="checkmark-circle" size={11} color="#F87171" /> Na blacklistu
+            <Ionicons name="checkmark-circle" size={11} color="#F87171" /> {t().messages.onBlacklist}
           </Text>
         ) : item.is_stop ? (
           <TouchableOpacity onPress={() => blacklistSingle(item)} style={styles.blacklistBtn}>
             <Ionicons name="ban-outline" size={13} color="#FBBF24" />
-            <Text style={styles.blacklistBtnText}>Přidat na blacklist</Text>
+            <Text style={styles.blacklistBtnText}>{t().messages.addToBlacklist}</Text>
           </TouchableOpacity>
         ) : null}
       </TouchableOpacity>
@@ -271,9 +269,9 @@ export default function MessagesScreen() {
     try {
       await GatewayService.rescanInbox();
       await fetchInbound(0, false);
-      Alert.alert('Hotovo', 'Přijaté SMS byly znovu prohledány');
+      Alert.alert(t().common.done, t().messages.rescanSuccess);
     } catch {
-      Alert.alert('Chyba', 'Nepodařilo se prohledat SMS inbox');
+      Alert.alert(t().common.error, t().messages.rescanError);
     } finally {
       setRescanning(false);
     }
@@ -287,9 +285,9 @@ export default function MessagesScreen() {
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Zprávy</Text>
+        <Text style={styles.title}>{t().messages.title}</Text>
         <Text style={styles.count}>
-          {direction === 'outbound' ? `${filteredOut.length} záznam(ů)` : `${inTotal} celkem`}
+          {direction === 'outbound' ? t().messages.recordCount(filteredOut.length) : t().messages.totalCount(inTotal)}
         </Text>
       </View>
 
@@ -299,7 +297,7 @@ export default function MessagesScreen() {
           <Ionicons name="search" size={16} color="#6B7280" />
           <TextInput
             style={styles.searchText}
-            placeholder="Hledat číslo nebo text..."
+            placeholder={t().messages.searchPlaceholder}
             placeholderTextColor="#6B7280"
             value={search}
             onChangeText={setSearch}
@@ -330,7 +328,7 @@ export default function MessagesScreen() {
         >
           <Ionicons name="arrow-up-circle-outline" size={16} color={direction === 'outbound' ? '#FFF' : '#9CA3AF'} />
           <Text style={[styles.directionText, direction === 'outbound' && styles.directionTextActive]}>
-            Odeslané
+            {t().messages.outbound}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -339,7 +337,7 @@ export default function MessagesScreen() {
         >
           <Ionicons name="arrow-down-circle-outline" size={16} color={direction === 'inbound' ? '#FFF' : '#9CA3AF'} />
           <Text style={[styles.directionText, direction === 'inbound' && styles.directionTextActive]}>
-            Přijaté
+            {t().messages.inboundTab}
           </Text>
         </TouchableOpacity>
       </View>
@@ -354,7 +352,7 @@ export default function MessagesScreen() {
               onPress={() => setOutFilter(f)}
             >
               <Text style={[styles.filterText, outFilter === f && styles.filterTextActive]}>
-                {f === 'all' ? 'Vše' : f === 'sent' ? 'Odesláno' : 'Chyby'}
+                {f === 'all' ? t().common.filter.all : f === 'sent' ? t().common.filter.sent : t().common.filter.errors}
               </Text>
             </TouchableOpacity>
           ))}
@@ -368,7 +366,7 @@ export default function MessagesScreen() {
               onPress={() => setInFilter(f)}
             >
               <Text style={[styles.filterText, inFilter === f && styles.filterTextActive]}>
-                {INBOUND_FILTER_LABELS[f]}
+                {f === 'all' ? t().common.filter.all : f === 'stop' ? 'STOP' : t().messages.filter.notBlacklisted}
               </Text>
             </TouchableOpacity>
           ))}
@@ -382,7 +380,7 @@ export default function MessagesScreen() {
             <TouchableOpacity onPress={selectAll} style={styles.bulkBtn}>
               <Ionicons name="checkbox-outline" size={16} color="#9CA3AF" />
               <Text style={styles.bulkBtnText}>
-                {selected.size > 0 ? `Vybrano (${selected.size})` : 'Vybrat vše'}
+                {selected.size > 0 ? t().messages.selectedCount(selected.size) : t().messages.selectAll}
               </Text>
             </TouchableOpacity>
           )}
@@ -414,14 +412,14 @@ export default function MessagesScreen() {
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="document-text-outline" size={48} color="#6B7280" />
-              <Text style={styles.emptyText}>Žádná historie</Text>
+              <Text style={styles.emptyText}>{t().messages.noHistory}</Text>
             </View>
           }
         />
       ) : inInitialLoading ? (
         <View style={styles.emptyState}>
           <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.emptyText}>Načítám...</Text>
+          <Text style={styles.emptyText}>{t().common.loading}</Text>
         </View>
       ) : (
         <FlatList
@@ -439,7 +437,7 @@ export default function MessagesScreen() {
             <View style={styles.emptyState}>
               <Ionicons name="mail-open-outline" size={48} color="#6B7280" />
               <Text style={styles.emptyText}>
-                {inFilter === 'stop_not_blacklisted' ? 'Žádné neblokované STOP zprávy' : 'Žádné příchozí SMS'}
+                {inFilter === 'stop_not_blacklisted' ? t().messages.noUnblockedStop : t().messages.noInbound}
               </Text>
             </View>
           }

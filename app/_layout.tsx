@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef, useState } from 'react';
 import { getSettings, isConfigured, preloadStorage } from '../src/storage/settings';
+import { initLocale } from '../src/i18n';
 import { initializeApiClient } from '../src/api/gatewayClient';
 import { startSmsQueue, stopSmsQueue, loadHistory } from '../src/services/smsQueueService';
 import { startInboundSmsListener, stopInboundSmsListener } from '../src/services/inboundSmsService';
@@ -62,6 +63,7 @@ const AppLayout = () => {
       // Request battery optimization exemption early — needed for
       // reliable background SMS delivery even when screen is off.
       await requestBatteryOptimizationExemption();
+      await initLocale();
       setStorageReady(true);
     };
     loadStorage();

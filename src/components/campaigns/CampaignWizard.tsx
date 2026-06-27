@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { t, onLocaleChange } from '../../i18n';
 import { CampaignTemplate, CampaignFilter } from "../../../src/types";
 import { styles } from "./styles";
 import { Header, Loader } from "./helpers";
@@ -32,10 +34,12 @@ export function WizardStep1({
   onSelectTemplate,
 }: Step1Props) {
   const insets = useSafeAreaInsets();
+  const [, setLangTick] = useState(0);
+  useEffect(() => onLocaleChange(() => setLangTick(n => n + 1)), []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
-      <Header title="1. Vyberte šablonu" onBack={onBack} />
+      <Header title={t().wizard.step1Title} onBack={onBack} />
       {loading ? (
         <Loader />
       ) : (
@@ -55,11 +59,11 @@ export function WizardStep1({
               <View style={styles.cardMeta}>
                 <Text style={styles.metaText}>Max: {item.max_limit}</Text>
                 <Text style={styles.metaText}>
-                  {item.segments.length} segment(u)
+                  {t().wizard.segmentCount(item.segments.length)}
                 </Text>
                 {item.exclude_contacted_days > 0 && (
                   <Text style={styles.metaExclude}>
-                    Vynechává kontaktované za {item.exclude_contacted_days}d
+                    {t().wizard.excludesContacted(item.exclude_contacted_days)}
                   </Text>
                 )}
               </View>
@@ -97,23 +101,24 @@ export function WizardStep2({
   onLoadPreview,
 }: Step2Props) {
   const insets = useSafeAreaInsets();
+  const [, setLangTick] = useState(0);
+  useEffect(() => onLocaleChange(() => setLangTick(n => n + 1)), []);
 
   return (
     <KeyboardAvoidingView
       style={[styles.container, { paddingTop: insets.top + 8 }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <Header title="2. Filtr a počet" onBack={onBack} />
+      <Header title={t().wizard.step2Title} onBack={onBack} />
       {loading ? (
         <Loader />
       ) : (
         <>
-          <Text style={styles.sectionLabel}>Segment zákazníků</Text>
+          <Text style={styles.sectionLabel}>{t().wizard.customerSegment}</Text>
           {selectedTemplate &&
             selectedTemplate.exclude_contacted_days > 0 && (
               <Text style={styles.excludeInfo}>
-                Vynechává kontakty, kterým byla odeslána SMS za posledních{" "}
-                {selectedTemplate.exclude_contacted_days} dní
+                {t().wizard.excludesContactedInfo(selectedTemplate.exclude_contacted_days)}
               </Text>
             )}
           <FlatList
@@ -149,7 +154,7 @@ export function WizardStep2({
             style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}
           >
             <View style={styles.limitRow}>
-              <Text style={styles.limitLabel}>Počet příjemců:</Text>
+              <Text style={styles.limitLabel}>{t().wizard.recipientCount}</Text>
               <TextInput
                 style={styles.limitInput}
                 value={limit}
@@ -167,7 +172,7 @@ export function WizardStep2({
               disabled={!selectedFilter}
             >
               <Ionicons name="eye-outline" size={18} color="#FFF" />
-              <Text style={styles.primaryBtnText}>Náhled</Text>
+              <Text style={styles.primaryBtnText}>{t().wizard.preview}</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -204,13 +209,15 @@ export function WizardStep3({
   onCreateCampaign,
 }: Step3Props) {
   const insets = useSafeAreaInsets();
+  const [, setLangTick] = useState(0);
+  useEffect(() => onLocaleChange(() => setLangTick(n => n + 1)), []);
 
   return (
     <KeyboardAvoidingView
       style={[styles.container, { paddingTop: insets.top + 8 }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <Header title="3. Potvrzení" onBack={onBack} />
+      <Header title={t().wizard.step3Title} onBack={onBack} />
       <ScrollView
         contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
         keyboardShouldPersistTaps="handled"
@@ -218,11 +225,11 @@ export function WizardStep3({
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>{selectedTemplate?.name}</Text>
           <View style={styles.divider} />
-          <Text style={styles.summaryLabel}>Segment:</Text>
+          <Text style={styles.summaryLabel}>{t().wizard.segment}</Text>
           <Text style={styles.summaryValue}>{selectedFilter?.name}</Text>
-          <Text style={styles.summaryLabel}>Počet příjemců:</Text>
+          <Text style={styles.summaryLabel}>{t().wizard.recipientCount}</Text>
           <Text style={styles.summaryValue}>{previewCount}</Text>
-          <Text style={styles.summaryLabel}>Text SMS (lze upravit):</Text>
+          <Text style={styles.summaryLabel}>{t().wizard.smsTextEditable}</Text>
           <TextInput
             style={styles.previewInput}
             value={editedBody}
@@ -232,7 +239,7 @@ export function WizardStep3({
             placeholderTextColor="#6B7280"
           />
           <View style={styles.unsubRow}>
-            <Text style={styles.unsubLabel}>Přidat STOP zprávu</Text>
+            <Text style={styles.unsubLabel}>{t().wizard.addStopMessage}</Text>
             <Switch
               value={allowUnsubscribe}
               onValueChange={onChangeUnsubscribe}
@@ -253,7 +260,7 @@ export function WizardStep3({
               <>
                 <Ionicons name="megaphone-outline" size={20} color="#FFF" />
                 <Text style={styles.sendBtnText}>
-                  Vytvořit kampaň ({previewCount} SMS)
+                  {t().wizard.createCampaign(previewCount)}
                 </Text>
               </>
             )}

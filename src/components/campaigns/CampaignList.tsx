@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from "react-native";
+import { t, onLocaleChange } from '../../i18n';
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CampaignSummary } from "../../../src/types";
@@ -43,11 +44,13 @@ export function CampaignList({
 }: CampaignListProps) {
   const insets = useSafeAreaInsets();
   const simpleMode = getSettings().simpleMode;
+  const [, setLangTick] = useState(0);
+  useEffect(() => onLocaleChange(() => setLangTick(n => n + 1)), []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Kampaně</Text>
+        <Text style={styles.title}>{t().campaignList.title}</Text>
       </View>
       {/* Filter chips */}
       <View style={styles.filterChips}>
@@ -56,7 +59,7 @@ export function CampaignList({
           onPress={onToggleDone}
         >
           <Text style={[styles.filterChipText, showDone && styles.filterChipTextActive]}>
-            Dokončené
+            {t().campaignList.filterDone}
           </Text>
         </TouchableOpacity>
         {!simpleMode && (
@@ -65,7 +68,7 @@ export function CampaignList({
             onPress={onToggleArchived}
           >
             <Text style={[styles.filterChipText, showArchived && styles.filterChipTextActive]}>
-              Archivované
+              {t().campaignList.filterArchived}
             </Text>
           </TouchableOpacity>
         )}
@@ -105,11 +108,11 @@ export function CampaignList({
               </View>
               <View style={styles.cardStats}>
                 <Text style={styles.cardStat}>
-                  {item.sent}/{item.total} odesláno
+                  {t().campaignList.sentCount(item.sent, item.total)}
                 </Text>
                 {item.error > 0 && (
                   <Text style={[styles.cardStat, { color: "#F87171" }]}>
-                    {item.error} chyb
+                    {t().campaignList.errorCount(item.error)}
                   </Text>
                 )}
                 {(item.revenue ?? 0) > 0 && (
@@ -117,7 +120,7 @@ export function CampaignList({
                     {item.revenue!.toLocaleString("cs-CZ", {
                       maximumFractionDigits: 0,
                     })}{" "}
-                    Kč
+                    {t().common.currency}
                   </Text>
                 )}
               </View>
@@ -136,9 +139,9 @@ export function CampaignList({
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="megaphone-outline" size={48} color="#6B7280" />
-              <Text style={styles.emptyText}>Žádné kampaně</Text>
+              <Text style={styles.emptyText}>{t().campaignList.empty}</Text>
               <Text style={styles.emptySubtext}>
-                Vytvořte první kampaň tlačítkem níže
+                {t().campaignList.emptyHint}
               </Text>
             </View>
           }

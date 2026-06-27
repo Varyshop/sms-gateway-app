@@ -15,6 +15,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import Constants from "expo-constants";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { t, onLocaleChange, getLocale, setLocale, type Locale } from '../../src/i18n';
 import {
   getSettings,
   setServiceEnabled,
@@ -64,6 +65,9 @@ export default function SettingsScreen() {
     String(Math.round(settings.smsCheckIntervalMs / 1000)),
   );
   const [smsCheckStatus, setSmsCheckStatus] = useState<string | null>(null);
+  const [, setLangTick] = useState(0);
+
+  useEffect(() => onLocaleChange(() => setLangTick(n => n + 1)), []);
 
   useEffect(() => {
     loadSimCards();
@@ -90,7 +94,7 @@ export default function SettingsScreen() {
       isNaN(intervalSec) ||
       intervalSec < 1
     ) {
-      setSmsCheckStatus("Neplatné hodnoty");
+      setSmsCheckStatus(t().settings.invalidValues);
       return;
     }
     const intervalMs = intervalSec * 1000;
@@ -103,10 +107,10 @@ export default function SettingsScreen() {
         smsCheckMaxCount: maxCount,
         smsCheckIntervalMs: intervalMs,
       });
-      setSmsCheckStatus("Uloženo");
+      setSmsCheckStatus(t().settings.saved);
       setTimeout(() => setSmsCheckStatus(null), 2000);
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Chyba";
+      const msg = error instanceof Error ? error.message : t().common.error;
       setSmsCheckStatus(msg);
     }
   };
@@ -177,10 +181,10 @@ export default function SettingsScreen() {
   };
 
   const handleDisconnect = () => {
-    Alert.alert("Odpojit", "Opravdu chcete odpojit telefon od serveru?", [
-      { text: "Zrušit", style: "cancel" },
+    Alert.alert(t().settings.disconnect.title, t().settings.disconnect.message, [
+      { text: t().common.cancel, style: "cancel" },
       {
-        text: "Odpojit",
+        text: t().settings.disconnect.confirm,
         style: "destructive",
         onPress: async () => {
           await stopSmsQueueFull();
@@ -218,31 +222,31 @@ export default function SettingsScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Nastavení</Text>
+        <Text style={styles.title}>{t().settings.title}</Text>
 
         {/* Connection Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Připojení</Text>
+          <Text style={styles.sectionTitle}>{t().settings.connection}</Text>
 
           {isConfigured() ? (
             <>
               {settings.simpleMode ? (
                 <View style={styles.row}>
-                  <Text style={styles.label}>Stav</Text>
+                  <Text style={styles.label}>{t().settings.status}</Text>
                   <Text style={[styles.value, { color: "#34D399" }]}>
-                    Připojeno
+                    {t().settings.connected}
                   </Text>
                 </View>
               ) : (
                 <>
                   <View style={styles.row}>
-                    <Text style={styles.label}>Server</Text>
+                    <Text style={styles.label}>{t().settings.server}</Text>
                     <Text style={styles.value} numberOfLines={1}>
                       {settings.apiUrl}
                     </Text>
                   </View>
                   <View style={styles.row}>
-                    <Text style={styles.label}>API Key</Text>
+                    <Text style={styles.label}>{t().settings.apiKey}</Text>
                     <Text style={styles.value}>
                       {"*".repeat(8)}...{settings.apiKey.slice(-4)}
                     </Text>
@@ -252,7 +256,7 @@ export default function SettingsScreen() {
                     onPress={handleDisconnect}
                   >
                     <Ionicons name="unlink-outline" size={18} color="#F87171" />
-                    <Text style={styles.dangerButtonText}>Odpojit</Text>
+                    <Text style={styles.dangerButtonText}>{t().settings.disconnectButton}</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -263,21 +267,21 @@ export default function SettingsScreen() {
               onPress={handleQrScan}
             >
               <Ionicons name="qr-code-outline" size={20} color="#FFF" />
-              <Text style={styles.primaryButtonText}>Naskenovat QR kód</Text>
+              <Text style={styles.primaryButtonText}>{t().settings.scanQrCode}</Text>
             </TouchableOpacity>
           )}
         </View>
 
         {/* Mode Toggle */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Režim aplikace</Text>
+          <Text style={styles.sectionTitle}>{t().settings.appMode}</Text>
           <View style={styles.switchRow}>
             <View style={{ flex: 1, marginRight: 12 }}>
-              <Text style={styles.label}>Jednoduchý režim</Text>
+              <Text style={styles.label}>{t().settings.simpleMode}</Text>
               <Text
                 style={[styles.hintText, { marginTop: 4, marginBottom: 0 }]}
               >
-                Skryje pokročilé funkce a statistiky
+                {t().settings.simpleModeHint}
               </Text>
             </View>
             <Switch
@@ -292,10 +296,37 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Language */}
+        <Text style={styles.sectionTitle}>{t().settings.language}</Text>
+        <View style={styles.card}>
+          <View style={styles.row}>
+            <Text style={styles.label}>{t().settings.language}</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['en', 'cs'] as Locale[]).map((lang) => (
+                <TouchableOpacity
+                  key={lang}
+                  onPress={() => setLocale(lang)}
+                  style={[
+                    styles.langButton,
+                    getLocale() === lang && styles.langButtonActive,
+                  ]}
+                >
+                  <Text style={[
+                    styles.langButtonText,
+                    getLocale() === lang && styles.langButtonTextActive,
+                  ]}>
+                    {lang === 'en' ? 'English' : 'Čeština'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
         {/* SIM Info */}
         {!settings.simpleMode && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>SIM karty</Text>
+            <Text style={styles.sectionTitle}>{t().settings.simCards}</Text>
             {simCards.length > 0 ? (
               simCards.map((sim) => (
                 <View key={sim.subscriptionId} style={styles.row}>
@@ -304,22 +335,22 @@ export default function SettingsScreen() {
                 </View>
               ))
             ) : (
-              <Text style={styles.emptyText}>Žádné SIM karty nenalezeny</Text>
+              <Text style={styles.emptyText}>{t().settings.noSimCards}</Text>
             )}
             <TouchableOpacity
               style={styles.secondaryButton}
               onPress={loadSimCards}
             >
-              <Text style={styles.secondaryButtonText}>Obnovit</Text>
+              <Text style={styles.secondaryButtonText}>{t().settings.refresh}</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {/* Service Control */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Služba</Text>
+          <Text style={styles.sectionTitle}>{t().settings.service}</Text>
           <View style={styles.switchRow}>
-            <Text style={styles.label}>Odesílání SMS</Text>
+            <Text style={styles.label}>{t().settings.smsSending}</Text>
             <Switch
               value={settings.serviceEnabled}
               onValueChange={handleToggleService}
@@ -331,7 +362,7 @@ export default function SettingsScreen() {
           {!settings.simpleMode && (
             <>
               <View style={styles.inputRow}>
-                <Text style={styles.label}>Polling interval (s)</Text>
+                <Text style={styles.label}>{t().settings.pollingInterval}</Text>
                 <TextInput
                   style={styles.input}
                   value={pollIntervalText}
@@ -343,7 +374,7 @@ export default function SettingsScreen() {
               </View>
 
               <View style={styles.inputRow}>
-                <Text style={styles.label}>Heartbeat interval (s)</Text>
+                <Text style={styles.label}>{t().settings.heartbeatInterval}</Text>
                 <TextInput
                   style={styles.input}
                   value={heartbeatIntervalText}
@@ -363,17 +394,17 @@ export default function SettingsScreen() {
                 try {
                   await GatewayService.rescanInbox();
                   Alert.alert(
-                    "Prohledávání",
-                    "Prohledávání příchozích SMS z posledních 30 dní bylo spuštěno.",
+                    t().settings.rescan.title,
+                    t().settings.rescan.message,
                   );
                 } catch (e) {
-                  Alert.alert("Chyba", "Nepodařilo se spustit prohledávání.");
+                  Alert.alert(t().common.error, t().settings.rescan.error);
                 }
               }}
             >
               <Ionicons name="refresh-outline" size={16} color="#3B82F6" />
               <Text style={styles.secondaryButtonText}>
-                Znovu prohledat přijaté SMS
+                {t().settings.rescanInbound}
               </Text>
             </TouchableOpacity>
           )}
@@ -382,15 +413,13 @@ export default function SettingsScreen() {
         {/* SMS Limit Section — advanced only */}
         {!settings.simpleMode && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>SMS limit (Android)</Text>
+            <Text style={styles.sectionTitle}>{t().settings.smsLimit}</Text>
             <Text style={styles.hintText}>
-              Maximální počet SMS v intervalu před systémovým alertem. Vyžaduje
-              ADB: adb shell pm grant com.varyshop.smsgatewayapp
-              android.permission.WRITE_SECURE_SETTINGS
+              {t().settings.smsLimitHint}
             </Text>
 
             <View style={styles.inputRow}>
-              <Text style={styles.label}>Max SMS v intervalu</Text>
+              <Text style={styles.label}>{t().settings.maxSmsInInterval}</Text>
               <TextInput
                 style={styles.input}
                 value={smsCheckMaxCountText}
@@ -401,7 +430,7 @@ export default function SettingsScreen() {
             </View>
 
             <View style={styles.inputRow}>
-              <Text style={styles.label}>Interval (s)</Text>
+              <Text style={styles.label}>{t().settings.intervalSeconds}</Text>
               <TextInput
                 style={styles.input}
                 value={smsCheckIntervalText}
@@ -420,7 +449,7 @@ export default function SettingsScreen() {
                 size={18}
                 color="#FFF"
               />
-              <Text style={styles.primaryButtonText}>Aplikovat</Text>
+              <Text style={styles.primaryButtonText}>{t().settings.apply}</Text>
             </TouchableOpacity>
 
             {smsCheckStatus && (
@@ -429,7 +458,7 @@ export default function SettingsScreen() {
                   styles.hintText,
                   {
                     marginTop: 8,
-                    color: smsCheckStatus === "Uloženo" ? "#34D399" : "#F87171",
+                    color: smsCheckStatus === t().settings.saved ? "#34D399" : "#F87171",
                   },
                 ]}
               >
@@ -441,15 +470,15 @@ export default function SettingsScreen() {
 
         {/* App Version */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>O aplikaci</Text>
+          <Text style={styles.sectionTitle}>{t().settings.about}</Text>
           <View style={styles.row}>
-            <Text style={styles.label}>Verze</Text>
+            <Text style={styles.label}>{t().settings.version}</Text>
             <Text style={styles.value}>
               {Constants.expoConfig?.version ?? "—"}
             </Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.label}>Build</Text>
+            <Text style={styles.label}>{t().settings.build}</Text>
             <Text style={styles.value}>
               {Constants.expoConfig?.android?.versionCode ??
                 Constants.expoConfig?.extra?.eas?.projectId?.slice(0, 8) ??
@@ -580,5 +609,29 @@ const styles = StyleSheet.create({
   dangerButtonText: {
     color: "#F87171",
     fontSize: 14,
+  },
+  card: {
+    marginHorizontal: 16,
+    marginBottom: 20,
+    padding: 16,
+    backgroundColor: "#1F2937",
+    borderRadius: 12,
+  },
+  langButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#374151',
+  },
+  langButtonActive: {
+    backgroundColor: '#2563EB',
+  },
+  langButtonText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  langButtonTextActive: {
+    color: '#FFF',
   },
 });

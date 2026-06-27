@@ -10,11 +10,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getSmsHistory, onHistoryChange } from '../../src/services/smsQueueService';
 import { SmsHistoryItem } from '../../src/types';
+import { t, onLocaleChange } from '../../src/i18n';
 
 type Filter = 'all' | 'sent' | 'error';
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
+  const [, setLangTick] = useState(0);
+  useEffect(() => onLocaleChange(() => setLangTick(n => n + 1)), []);
+
   const [history, setHistory] = useState<SmsHistoryItem[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
 
@@ -61,8 +65,8 @@ export default function HistoryScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Historie SMS</Text>
-        <Text style={styles.count}>{filteredHistory.length} záznam(ů)</Text>
+        <Text style={styles.title}>{t().history.title}</Text>
+        <Text style={styles.count}>{t().history.recordCount(filteredHistory.length)}</Text>
       </View>
 
       {/* Filter tabs */}
@@ -74,7 +78,7 @@ export default function HistoryScreen() {
             onPress={() => setFilter(f)}
           >
             <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-              {f === 'all' ? 'Vše' : f === 'sent' ? 'Odesláno' : 'Chyby'}
+              {f === 'all' ? t().common.filter.all : f === 'sent' ? t().common.filter.sent : t().common.filter.errors}
             </Text>
           </TouchableOpacity>
         ))}
@@ -87,7 +91,7 @@ export default function HistoryScreen() {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Ionicons name="document-text-outline" size={48} color="#6B7280" />
-            <Text style={styles.emptyText}>Žádná historie</Text>
+            <Text style={styles.emptyText}>{t().history.empty}</Text>
           </View>
         }
       />
