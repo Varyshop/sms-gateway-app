@@ -2,7 +2,7 @@
   "expo": {
     "name": "Varyshop SMS",
     "slug": "sms-gateway-app",
-    "version": "1.7.0",
+    "version": "1.7.1",
     "scheme": "smsgateway",
     "icon": "./assets/icon.png",
     "splash": {
