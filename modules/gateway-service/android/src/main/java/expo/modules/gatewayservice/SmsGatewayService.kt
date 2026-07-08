@@ -298,8 +298,11 @@ class SmsGatewayService : Service() {
             }
             ACTION_RESCAN_INBOX -> {
                 Log.i(TAG, "Manual inbox rescan requested")
+                // Manual rescan must cover the full 30-day window, not just
+                // the delta since the last automatic check
+                prefs.edit().remove("last_stop_check_timestamp").apply()
                 retroactiveStopPending = true
-                executor.execute { retroactiveStopCheck() }
+                executor.execute { retroactiveStopPending = !retroactiveStopCheck() }
             }
             else -> startGateway()
         }
@@ -859,8 +862,9 @@ class SmsGatewayService : Service() {
 
             if (!success || smsList == null || smsList.length() == 0) {
                 if (retroactiveStopPending) {
-                    retroactiveStopPending = false
-                    retroactiveStopCheck()
+                    // Clear the flag only when the check fully succeeds,
+                    // so failed uploads are retried on the next idle poll
+                    retroactiveStopPending = !retroactiveStopCheck()
                 }
                 return
             }
@@ -868,7 +872,6 @@ class SmsGatewayService : Service() {
             val count = smsList.length()
             Log.i(TAG, "Found $count pending SMS")
             pendingCount = count
-            retroactiveStopPending = false
             broadcastStatusChange()
 
             val delayMs = if (rateLimit > 0) (60000L / rateLimit).coerceAtLeast(100) else 600L
@@ -1114,11 +1117,13 @@ class SmsGatewayService : Service() {
 
     // ---- Retroactive STOP Check ----
 
-    private fun retroactiveStopCheck() {
+    /** @return true when the check completed (nothing to send or upload
+     *  succeeded), false when the upload failed and should be retried. */
+    private fun retroactiveStopCheck(): Boolean {
         try {
             val url = apiUrl
             val key = apiKey
-            if (url.isEmpty() || key.isEmpty()) return
+            if (url.isEmpty() || key.isEmpty()) return true
 
             val lastCheckTimestamp = prefs.getLong("last_stop_check_timestamp", 0)
             val since = if (lastCheckTimestamp > 0) lastCheckTimestamp
@@ -1162,25 +1167,33 @@ class SmsGatewayService : Service() {
 
             if (allMessages.length() == 0) {
                 Log.d(TAG, "Retroactive inbound check: no messages found since $since")
-            } else {
-                Log.i(TAG, "Retroactive inbound check: found ${allMessages.length()} messages, sending to server")
-                val body = JSONObject().apply {
-                    put("messages", allMessages)
-                }
-                val response = httpPost("$url/sms-gateway/inbound-batch", key, body)
-                if (response != null) {
-                    val blacklisted = response.optInt("blacklisted", 0)
-                    val already = response.optInt("already_blacklisted", 0)
-                    val recorded = response.optInt("recorded", 0)
-                    Log.i(TAG, "Retroactive inbound check: recorded=$recorded, blacklisted=$blacklisted, already=$already")
-                }
+                prefs.edit().putLong("last_stop_check_timestamp", System.currentTimeMillis()).apply()
+                return true
             }
 
-            prefs.edit().putLong("last_stop_check_timestamp", System.currentTimeMillis()).apply()
+            Log.i(TAG, "Retroactive inbound check: found ${allMessages.length()} messages, sending to server")
+            val body = JSONObject().apply {
+                put("messages", allMessages)
+            }
+            val response = httpPost("$url/sms-gateway/inbound-batch", key, body)
+            if (response != null) {
+                val blacklisted = response.optInt("blacklisted", 0)
+                val already = response.optInt("already_blacklisted", 0)
+                val recorded = response.optInt("recorded", 0)
+                Log.i(TAG, "Retroactive inbound check: recorded=$recorded, blacklisted=$blacklisted, already=$already")
+                // Only advance the checkpoint after a successful upload —
+                // otherwise these messages would never be re-scanned
+                prefs.edit().putLong("last_stop_check_timestamp", System.currentTimeMillis()).apply()
+                return true
+            }
+            Log.w(TAG, "Retroactive inbound upload failed, will retry on next check")
+            return false
         } catch (e: SecurityException) {
             Log.w(TAG, "Cannot read SMS inbox for retroactive check (no permission): ${e.message}")
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "Retroactive inbound check error", e)
+            return false
         }
     }
 
